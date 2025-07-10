@@ -1,8 +1,6 @@
-
-#updated code Hindi language
-
-from flask import Flask, request, Response
+from flask import Flask, request, Response, jsonify
 from twilio.twiml.voice_response import VoiceResponse, Gather
+from twilio.rest import Client
 import requests
 import openai
 from dotenv import load_dotenv
@@ -11,6 +9,12 @@ import os
 load_dotenv()
 
 app = Flask(__name__)
+
+# Initialize Twilio client
+client = Client(
+    os.getenv("TWILIO_ACCOUNT_SID"),
+    os.getenv("TWILIO_AUTH_TOKEN")
+)
 
 # ========== HARDCODED DATABASE ==========
 LEADS = {
@@ -47,7 +51,6 @@ COURSES = {
 # ElevenLabs Configuration
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 HINDI_VOICE_ID = "MF3mGyEYCl7XYWbV9V6O"  # Hindi female voice
-
 
 def text_to_speech(text, language):
     """Convert text to speech using ElevenLabs"""
@@ -88,9 +91,12 @@ def handle_call():
     
     # Initial greeting
     if lead["language"] == "hi":
-        greeting = "नमस्ते, मैं मेरिटो  दिशा बोल रही हूँ। आप कैसे मदद कर सकती हूँ?"
+        greeting = "नमस्ते, मैं मेरिटो दिशा बोल रही हूँ। आप कैसे मदद कर सकती हूँ?"
         audio = text_to_speech(greeting, "hi")
-        response.play(audio)
+        if audio:
+            response.play(audio)
+        else:
+            response.say(greeting, voice="Polly.Aditi")
     else:
         response.say("Hello, this is Disha from Meritto. How can I help you?", 
                     voice="Polly.Joanna")
@@ -134,7 +140,10 @@ def process():
     
     if lead["language"] == "hi":
         audio = text_to_speech(response_text, "hi")
-        response.play(audio)
+        if audio:
+            response.play(audio)
+        else:
+            response.say(response_text, voice="Polly.Aditi")
     else:
         response.say(response_text, voice="Polly.Joanna")
     
@@ -148,6 +157,21 @@ def process():
     response.append(gather)
     
     return Response(str(response), mimetype="text/xml")
+
+@app.route("/initiate-call", methods=["POST"])
+def initiate_call():
+    """Endpoint to make outgoing calls"""
+    to_number = request.json.get("to_number")
+    call = client.calls.create(
+        url=f"{os.getenv('WEBHOOK_URL')}/answer",
+        to=to_number,
+        from_=os.getenv("TWILIO_PHONE_NUMBER"),
+        record=True,
+        recording_channels='dual',
+        recording_status_callback=f"{os.getenv('WEBHOOK_URL')}/recording-events",
+        machine_detection="Enable"
+    )
+    return jsonify({"status": "success", "call_sid": call.sid})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
