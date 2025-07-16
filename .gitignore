@@ -1,0 +1,29 @@
+# Environment files
+.env
+
+
+# Virtual environment
+myenv/
+
+# Executable files
+ngrok.exe
+
+# Configuration files
+pyvenv.cfg
+
+# Ngrok file
+ngrok.exe
+
+
+
+
+
+# Any logs or temporary files
+*.log
+*.temp
+
+#file
+scraper.py
+app2.py
+call.py
+example2.py
