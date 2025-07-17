@@ -23,7 +23,19 @@ ngrok.exe
 *.temp
 
 #file
-scraper.py
+
 app2.py
 call.py
 example2.py
+utils.py
+chroma_db
+chroma_db/chroma.sqlite3
+chroma_db/eb1e171a-032e-4e36-9013-f77c1b06a181/data_level0.bin
+chroma_db/eb1e171a-032e-4e36-9013-f77c1b06a181/header.bin
+chroma_db/eb1e171a-032e-4e36-9013-f77c1b06a181/length.bin
+chroma_db/eb1e171a-032e-4e36-9013-f77c1b06a181/link_lists.bin
+
+
+__pycache__
+scraper.cpython-312.pyc
+vector_db.cpython-312.pyc
