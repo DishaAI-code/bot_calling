@@ -7,10 +7,10 @@ from datetime import datetime
 from scraper import scrape_lpu_courses
 from vector_db import VectorDB
 from twilio.rest import Client
-import openai  # ✅ updated import
+from openai import OpenAI
 
-# ✅ Initialize OpenAI key using latest SDK format
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# ✅ Initialize OpenAI client (latest SDK format)
+client = OpenAI()
 
 app = Flask(__name__)
 
@@ -62,9 +62,9 @@ def make_call():
         if not all([account_sid, auth_token, from_number]):
             return {"success": False, "message": "Twilio credentials missing"}, 500
 
-        client = Client(account_sid, auth_token)
+        client_twilio = Client(account_sid, auth_token)
 
-        call = client.calls.create(
+        call = client_twilio.calls.create(
             to=to_number,
             from_=from_number,
             url="https://web-production-e1e66.up.railway.app/answer",
@@ -148,7 +148,7 @@ def wait_response():
 # ---------- AI Response Generators ----------
 
 def generate_btech_response(courses):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {
@@ -166,7 +166,7 @@ def generate_btech_response(courses):
     return response.choices[0].message.content
 
 def generate_general_response(query):
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "You're Disha, an LPU admission counselor. Respond in friendly Indian English (1 sentence)."},

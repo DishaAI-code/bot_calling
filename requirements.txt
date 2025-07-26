@@ -1,10 +1,9 @@
 flask==2.3.2
 twilio==8.3.0
-openai==1.30.1
+openai==0.28.1       # 👈 Downgraded to support ChromaDB
 python-dotenv==1.0.0
 gunicorn==21.2.0
 chromadb==0.3.26
 beautifulsoup4==4.12.2
 requests==2.31.0
-pysqlite3-binary==0.5.4  # ✅ DO NOT use 1.0.0 — it breaks on Railway
-pydantic==1.10.13         # ✅ Fixes BaseSettings import crash from chromadb
+pysqlite3-binary==0.5.4
