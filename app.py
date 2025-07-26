@@ -45,21 +45,23 @@ def health_check():
 def make_call():
     data = request.get_json() or {}
     to_number = data.get("phone")
-    verified_numbers = ["+919972472457"]
-    if not to_number or to_number not in verified_numbers:
-        return {"success": False, "message": "Number not verified or missing"}, 400
+    
+    if not to_number:
+        return {"Success":False,"message":"Phone number is required"}, 400
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
     from_number = os.getenv("TWILIO_PHONE_NUMBER")
+    
     if not all([account_sid, auth_token, from_number]):
         return {"success": False, "message": "Twilio credentials missing"}, 500
+    
     tw_client = Client(account_sid, auth_token)
     call = tw_client.calls.create(
         to=to_number,
         from_=from_number,
-        url=os.getenv("CALLBACK_URL"),  # set in env
+        url="https://web-production-e1e66.up.railway.app/answer",  # set in env
         machine_detection="Enable",
-        status_callback=os.getenv("STATUS_CALLBACK_URL")
+        status_callback="https://web-production-e1e66.up.railway.app/status"
     )
     return {"success": True, "sid": call.sid}
 
