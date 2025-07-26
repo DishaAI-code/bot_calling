@@ -1,9 +1,5 @@
-
-
-#--------------------------------------------------date - 16th ------------------
 from flask import Flask, request, Response
 from twilio.twiml.voice_response import VoiceResponse, Gather
-from openai import OpenAI
 from urllib.parse import quote, unquote
 import os
 import random
@@ -11,11 +7,14 @@ from datetime import datetime
 from scraper import scrape_lpu_courses
 from vector_db import VectorDB
 from twilio.rest import Client
+import openai  # ✅ updated import
+
+# ✅ Initialize OpenAI key using latest SDK format
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__)
 
-# Initialize clients
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize vector DB
 vector_db = VectorDB()
 
 # Random filler lines to reduce perceived lag
@@ -56,7 +55,6 @@ def make_call():
         if not to_number or to_number not in verified_numbers:
             return {"success": False, "message": "Number not verified or missing"}, 400
 
-        # ✅ Twilio credentials from .env
         account_sid = os.getenv("TWILIO_ACCOUNT_SID")
         auth_token = os.getenv("TWILIO_AUTH_TOKEN")
         from_number = os.getenv("TWILIO_PHONE_NUMBER")
@@ -66,11 +64,10 @@ def make_call():
 
         client = Client(account_sid, auth_token)
 
-        # ✅ Make the call
         call = client.calls.create(
             to=to_number,
             from_=from_number,
-            url="https://web-production-e1e66.up.railway.app/answer",  # Change to your public Flask URL
+            url="https://web-production-e1e66.up.railway.app/answer",
             machine_detection="Enable",
             status_callback="https://web-production-e1e66.up.railway.app/status"
         )
@@ -116,7 +113,6 @@ def process():
         print(f"[/process] Received: {user_input}")
         safe_query = quote(user_input)
 
-        # 🔀 Choose a natural-sounding filler line
         filler_line = random.choice(FILLER_LINES)
 
         response = VoiceResponse()
@@ -136,14 +132,12 @@ def wait_response():
 
         print(f"[/wait-response] Final query: {query}")
 
-        # BTech course detection
         if any(kw in query for kw in ["btech", "engineering", "b.tech"]):
             courses = vector_db.search_courses("btech engineering", n_results=5)
             if courses:
                 message = generate_btech_response(courses)
                 return voice_response(message)
 
-        # General query fallback
         message = generate_general_response(query)
         return voice_response(message)
 
@@ -151,9 +145,10 @@ def wait_response():
         print("[/wait-response] Error:", e)
         return fallback_response("Apologies, let me transfer you to the admissions desk.")
 
-# AI Response Generators
+# ---------- AI Response Generators ----------
+
 def generate_btech_response(courses):
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {
@@ -171,7 +166,7 @@ def generate_btech_response(courses):
     return response.choices[0].message.content
 
 def generate_general_response(query):
-    response = client.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "You're Disha, an LPU admission counselor. Respond in friendly Indian English (1 sentence)."},
@@ -181,7 +176,8 @@ def generate_general_response(query):
     )
     return response.choices[0].message.content
 
-# Helpers
+# ---------- Helpers ----------
+
 def voice_response(text):
     vr = VoiceResponse()
     vr.say(text, voice="Polly.Joanna")
