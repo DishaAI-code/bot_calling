@@ -53,12 +53,12 @@ def cleanup_old_audio_files(max_age_seconds=300):
 def health_check():
     return Response("LPU Course Bot is running", content_type="text/plain")
 
-# === Make outbound call (optional) ===
-@app.route("/make-call", methods=["POST"])
+@app.route("/makecall", methods=["POST"])
 def make_call():
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         to_number = data.get("phone")
+
         if not to_number:
             return {"success": False, "message": "Phone number is required"}, 400
 
@@ -83,8 +83,9 @@ def make_call():
 
         return {"success": True, "sid": call.sid}
     except Exception as e:
-        print(f"[ERROR] Failed to log request: {e}")
-        return {"success": False, "message": "Internal server error"}, 500
+        app.logger.exception("[ERROR] Failed to make call")
+        print(f"❌ Call failed: {str(e)}")
+        return {"success": False, "message": str(e)}, 500
     
 # === 1. ANSWER CALL ===
 @app.route("/answer", methods=["POST"])
