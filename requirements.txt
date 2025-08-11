@@ -13,7 +13,7 @@
 Flask
 twilio
 requests
-openai
+openai==0.28
 azure-cognitiveservices-speech
 python-dotenv
 
