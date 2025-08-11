@@ -45,8 +45,10 @@ def cleanup_old_audio_files(max_age_seconds=300):
                     try:
                         os.remove(file_path)
                         print(f"[CLEANUP] Deleted old file: {filename}")
+                        app.logger.info(f"[CLEANUP] Deleted old file: {filename}")
                     except Exception as e:
                         print(f"[CLEANUP ERROR] Failed to delete {filename}: {e}")
+                        app.logger.exception(f"[CLEANUP ERROR] Failed to delete {filename}")
 
 # === Health check ===
 @app.route("/", methods=["GET"])
@@ -58,20 +60,28 @@ def health_check():
 @app.route("/makecall", methods=["POST"])
 def make_call():
     print("\n[DEBUG] /makecall endpoint hit.")
+    app.logger.info("[DEBUG] /makecall endpoint hit.")
     try:
         data = request.get_json(silent=True) or {}
         to_number = data.get("phone")
         print(f"[DEBUG] Request body: {data}")
-
+        app.logger.info(f"[INFO] Making call to {to_number}")
+        
         if not to_number:
+            print("[ERROR] Phone number is required")
+            app.logger.error("[ERROR] Phone number is required")
             return {"success": False, "message": "Phone number is required"}, 400
 
         if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
+            print("[ERROR] Twilio credentials missing")
+            app.logger.error("[ERROR] Twilio credentials missing")
             return {"success": False, "message": "Twilio credentials missing"}, 500
 
         client_twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         base_url = os.getenv("PUBLIC_BASE_URL")
         if not base_url:
+            print("[ERROR] PUBLIC_BASE_URL not set")
+            app.logger.error("[ERROR] PUBLIC_BASE_URL not set")
             return {"success": False, "message": "Set PUBLIC_BASE_URL env var for callback URLs"}, 500
 
         call = client_twilio.calls.create(
@@ -84,10 +94,12 @@ def make_call():
         )
 
         print(f"[INFO] Outbound call initiated. SID: {call.sid}")
+        app.logger.info(f"[INFO] Call SID: {call.sid}")
         return {"success": True, "sid": call.sid}
 
     except Exception as e:
         print(f"[ERROR] Failed to make call: {str(e)}")
+        app.logger.exception("[ERROR] Failed to make call")
         return {"success": False, "message": str(e)}, 500
 
 # === ANSWER CALL ===
@@ -104,10 +116,15 @@ def answer_call():
             resp.say("Hello, I am calling from LPU.", voice="Polly.Joanna", language="en-IN")
             resp.say("Please ask your question after the beep.", voice="Polly.Joanna", language="en-IN")
 
-        resp.record(action="/process_recording", method="POST", max_length=30, timeout=3, play_beep=True)
+        resp.record(
+            action="/process_recording", 
+            method="POST", max_length=30, 
+            timeout=3, play_beep=True)
+        
         return Response(str(resp), mimetype="text/xml")
     except Exception as e:
         print(f"[ERROR] /answer route failed: {e}")
+        app.logger.exception("[ERROR] Failed in /answer")
         return Response("<Response><Say>Error occurred</Say></Response>", mimetype="text/xml")
 
 # === PROCESS RECORDING ===
@@ -117,7 +134,7 @@ def process_recording():
         recording_url = request.form.get("RecordingUrl")
         call_sid = request.form.get("CallSid")
         print(f"[DEBUG] Recording URL: {recording_url}, CallSid: {call_sid}")
-
+        app.logger.info(f"[DEBUG] Recording URL: {recording_url}, CallSid: {call_sid}")
         # Download Twilio recording
         audio_response = requests.get(recording_url + ".wav", auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN), timeout=20)
         audio_response.raise_for_status()
@@ -130,7 +147,9 @@ def process_recording():
         transcription, detected_lang = transcribe_with_azure(temp_audio_path)
         print(f"[TRANSCRIPTION]: {transcription}")
         print(f"[DETECTED LANG]: {detected_lang}")
-
+        app.logger.info(f"[TRANSCRIPTION]: {transcription}")
+        app.logger.info(f"[DETECTED LANG]: {detected_lang}")
+        
         if not transcription:
             resp = VoiceResponse()
             resp.say("Sorry, I didn't catch that. Please speak clearly after the beep.", voice="Polly.Joanna", language="en-IN")
@@ -138,7 +157,7 @@ def process_recording():
             return Response(str(resp), mimetype="text/xml")
 
         # Language-specific prompt
-        if detected_lang and detected_lang.startswith("hi"):
+        if detected_lang == "hi-IN":
             prompt_text = f"The user said: '{transcription}'. Respond in Hinglish. Keep it short."
         else:
             prompt_text = f"The user said: '{transcription}'. Respond in English. Keep it short."
@@ -147,11 +166,13 @@ def process_recording():
         completion = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt_text}])
         ai_response = completion.choices[0].message.content.strip()
         print(f"[AI RESPONSE]: {ai_response}")
-
+        app.logger.info(f"[AI RESPONSE]: {ai_response}")
+        
         # Generate audio
         audio_url, filename = generate_elevenlabs_audio(ai_response, call_sid)
         print(f"[AUDIO URL]: {audio_url}")
-
+        app.logger.info(f"[AUDIO URL]: {audio_url}")
+        
         # Play audio
         resp = VoiceResponse()
         resp.play(audio_url)
@@ -160,6 +181,7 @@ def process_recording():
 
     except Exception as e:
         print(f"[ERROR] Processing recording failed: {e}")
+        app.logger.exception("[ERROR] Failed in /process_recording")
         resp = VoiceResponse()
         resp.say("Sorry, an error occurred while processing your request.", voice="Polly.Joanna", language="en-IN")
         return Response(str(resp), mimetype="text/xml")
@@ -168,6 +190,8 @@ def process_recording():
 def transcribe_with_azure(audio_path):
     try:
         print(f"[DEBUG] Transcribing with Azure: {audio_path}")
+        app.logger.info(f"[DEBUG] Transcribing with Azure: {audio_path}")
+        
         speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_REGION)
         audio_config = speechsdk.audio.AudioConfig(filename=audio_path)
         auto_detect_config = speechsdk.AutoDetectSourceLanguageConfig(languages=["en-IN", "hi-IN"])
@@ -183,6 +207,7 @@ def transcribe_with_azure(audio_path):
             raise Exception(f"STT failed: {result.reason}")
     except Exception as e:
         print(f"[STT ERROR]: {e}")
+        app.logger.exception("[STT ERROR]")
         return "", ""
 
 # === ELEVEN LABS TTS ===
@@ -190,7 +215,8 @@ def generate_elevenlabs_audio(text, call_sid=None):
     try:
         # cleanup_old_audio_files(max_age_seconds=300)
         print(f"[DEBUG] Generating ElevenLabs TTS for text: {text}")
-
+        app.logger.info(f"[DEBUG] Generating ElevenLabs TTS for text: {text}")
+        
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE_ID}"
         headers = {"xi-api-key": ELEVEN_API_KEY, "Content-Type": "application/json"}
         payload = {"text": text, "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
@@ -210,6 +236,7 @@ def generate_elevenlabs_audio(text, call_sid=None):
 
     except Exception as e:
         print(f"[TTS ERROR]: {e}")
+        app.logger.exception("[TTS ERROR]")
         raise
 
 def request_base_url():
@@ -230,7 +257,8 @@ def call_status():
         call_sid = request.form.get("CallSid")
         call_status = request.form.get("CallStatus")
         print(f"[STATUS] CallSid={call_sid} Status={call_status}")
-
+        app.logger.info(f"[STATUS] CallSid={call_sid} Status={call_status}")
+        
         if call_sid and call_status in ("completed", "failed", "busy", "no-answer"):
             filename = call_audio_map.pop(call_sid, None)
             if filename:
@@ -238,6 +266,8 @@ def call_status():
                 if os.path.exists(file_path):
                     os.remove(file_path)
                     print(f"[STATUS CLEANUP] Deleted audio: {filename}")
+                    app.logger.info(f"[STATUS CLEANUP] Deleted audio: {filename}")
+                    
         return ("", 204)
     except Exception as e:
         print(f"[STATUS ERROR]: {e}")
