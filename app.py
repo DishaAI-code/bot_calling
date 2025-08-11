@@ -21,7 +21,7 @@ ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-
+Api_Base_url = os.getenv("PUBLIC_BASE_URL")
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -79,7 +79,7 @@ def make_call():
             return {"success": False, "message": "Twilio credentials missing"}, 500
 
         client_twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        base_url = base_url
+        base_url = Api_Base_url
         if not base_url:
             print("[ERROR] PUBLIC_BASE_URL not set")
             app.logger.error("[ERROR] PUBLIC_BASE_URL not set")
