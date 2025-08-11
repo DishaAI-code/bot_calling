@@ -6,7 +6,7 @@ import requests
 from flask import Flask, request, Response, send_from_directory
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.rest import Client
-from openai import OpenAI
+import openai
 import azure.cognitiveservices.speech as speechsdk
 from dotenv import load_dotenv
 
@@ -23,7 +23,7 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # when making outbound calls
 
-client = OpenAI(api_key=openAi_api)
+openai.api_key = openAi_api
 # Folder to store generated audio files (publicly served)
 BASE_DIR = os.path.dirname(__file__)
 STATIC_FOLDER = os.path.join(BASE_DIR, "static")
@@ -152,11 +152,11 @@ def process_recording():
             """
 
         # Get response from OpenAI
-        completion = client.Chat.Completions.create(
+        completion = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt_text}]
         )
-        ai_response = completion["choices"][0]["message"]["content"].strip()
+        ai_response = completion.choices[0].message["content"].strip()
         app.logger.info("[AI RESPONSE]: %s", ai_response)
         print(f"🤖 AI Response: {ai_response}")
         # Generate audio (ElevenLabs) and save to static folder
