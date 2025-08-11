@@ -56,30 +56,36 @@ def health_check():
 # === Make outbound call (optional) ===
 @app.route("/make-call", methods=["POST"])
 def make_call():
-    data = request.get_json() or {}
-    to_number = data.get("phone")
-    if not to_number:
-        return {"success": False, "message": "Phone number is required"}, 400
+    try:
+        data = request.get_json() or {}
+        to_number = data.get("phone")
+        if not to_number:
+            return {"success": False, "message": "Phone number is required"}, 400
 
-    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
-        return {"success": False, "message": "Twilio credentials missing"}, 500
+        if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
+            return {"success": False, "message": "Twilio credentials missing"}, 500
 
-    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    # ensure URL points to your deployed /answer and /status endpoints
-    base_url = os.getenv("PUBLIC_BASE_URL")  # e.g. https://your-app.azurewebsites.net
-    if not base_url:
-        return {"success": False, "message": "Set PUBLIC_BASE_URL env var for callback URLs"}, 500
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-    call = client.calls.create(
-        to=to_number,
-        from_=TWILIO_PHONE_NUMBER,
-        url=f"{base_url}/answer",
-        machine_detection="Enable",
-        status_callback=f"{base_url}/status",
-        status_callback_event=["completed"]  # you can also include initiated, ringing, answered
-    )
-    return {"success": True, "sid": call.sid}
+        # ensure URL points to your deployed /answer and /status endpoints
+        base_url = os.getenv("PUBLIC_BASE_URL")  # e.g. https://your-app.azurewebsites.net
+        if not base_url:
+            return {"success": False, "message": "Set PUBLIC_BASE_URL env var for callback URLs"}, 500
 
+        call = client.calls.create(
+            to=to_number,
+            from_=TWILIO_PHONE_NUMBER,
+            url=f"{base_url}/answer",
+            machine_detection="Enable",
+            status_callback=f"{base_url}/status",
+            status_callback_event=["completed"]  # you can also include initiated, ringing, answered
+        )
+
+        return {"success": True, "sid": call.sid}
+    except Exception as e:
+        print(f"[ERROR] Failed to log request: {e}")
+        return {"success": False, "message": "Internal server error"}, 500
+    
 # === 1. ANSWER CALL ===
 @app.route("/answer", methods=["POST"])
 def answer_call():
