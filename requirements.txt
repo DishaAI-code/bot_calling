@@ -1,10 +1,19 @@
-flask==2.3.2
-twilio==8.3.0
-openai==0.28.1
-python-dotenv==1.0.0
-gunicorn==21.2.0
-chromadb==0.3.26
-beautifulsoup4==4.12.2
-requests==2.31.0
-pysqlite3-binary==0.5.4
-pydantic==1.10.13                # ✅ Force old Pydantic compatible with chromadb 0.3.26
+# flask==2.3.2
+# twilio==8.3.0
+# openai==0.28.1
+# python-dotenv==1.0.0
+# gunicorn==21.2.0
+# chromadb==0.3.26
+# beautifulsoup4==4.12.2
+# requests==2.31.0
+# pysqlite3-binary==0.5.4
+# pydantic==1.10.13                # ✅ Force old Pydantic compatible with chromadb 0.3.26
+
+
+Flask
+twilio
+requests
+openai
+azure-cognitiveservices-speech
+python-dotenv
+
