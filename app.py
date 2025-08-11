@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # === CONFIG (from environment) ===
-openAi_api_key = os.getenv("OPENAI_API_KEY")  # set in Azure App Settings
+openAi_api = os.getenv("OPENAI_API_KEY")  # set in Azure App Settings
 AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
 AZURE_REGION = os.getenv("AZURE_REGION", "eastus2")
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
@@ -23,7 +23,7 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # when making outbound calls
 
-client = OpenAI(api_key=openAi_api_key)
+client = OpenAI(api_key=openAi_api)
 # Folder to store generated audio files (publicly served)
 BASE_DIR = os.path.dirname(__file__)
 STATIC_FOLDER = os.path.join(BASE_DIR, "static")
