@@ -23,6 +23,7 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
+
 Api_Base_url = os.getenv("PUBLIC_BASE_URL")
 
 # Initialize OpenAI client
@@ -111,11 +112,25 @@ def answer_call():
     try:
         print("answer_call endpoinnt hit")
         repeat = request.args.get("repeat", "false").lower() == "true"
+        detected_lang = request.args.get("lang", "en-IN")
+        
         print(f"[INFO] Answering call. Repeat: {repeat}")
+        print(f"[INFO] Detected language: {detected_lang}")
+        app.logger.info(f"[INFO] Answering call. Repeat: {repeat}")
+        app.logger.info(f"[INFO] Detected language: {detected_lang}")
         resp = VoiceResponse()
 
         if repeat:
-            resp.say("You can ask another question now.", voice="Polly.Joanna", language="en-IN")
+            print("inside repeat block, repeat is true")
+            print(f"detected_lang: {detected_lang}")
+            if(detected_lang == "hi-IN"):
+                resp.say("आप फिर से सवाल पूछ सकते हैं।", voice="Polly.Anika", language="hi-IN")
+            elif(detected_lang == "kn-IN"):
+                resp.say("ಈಗ ನೀವು ಮತ್ತೊಂದು ಪ್ರಶ್ನೆಯನ್ನು ಕೇಳಬಹುದು.", voice="Polly.Anika", language="kn-IN")
+            elif(detected_lang == "mr-IN"): 
+                resp.say("तुम्ही पुन्हा प्रश्न विचारू शकता.", voice="Polly.Anika", language="mr-IN")
+            else:   
+                resp.say("You can ask another question now.", voice="Polly.Joanna", language="en-IN")
         else:
             resp.say("Hello, I am calling from LPU.", voice="Polly.Joanna", language="en-IN")
             resp.say("Please ask your question after the beep.", voice="Polly.Joanna", language="en-IN")
@@ -123,7 +138,8 @@ def answer_call():
         resp.record(
             action="/process_recording", 
             method="POST", max_length=30, 
-            timeout=3, play_beep=True)
+            timeout=3, play_beep=True
+            )
         
         return Response(str(resp), mimetype="text/xml")
     except Exception as e:
@@ -235,7 +251,8 @@ def process_recording():
         # Play audio
         resp = VoiceResponse()
         resp.play(audio_url)
-        resp.redirect("/answer?repeat=true")
+        public_base_url = Api_Base_url
+        resp.redirect(f"{public_base_url}/answer?repeat=true&lang={detected_lang}")
         return Response(str(resp), mimetype="text/xml")
 
     except Exception as e:
