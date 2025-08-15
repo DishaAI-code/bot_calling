@@ -9,6 +9,7 @@ from twilio.rest import Client
 from openai import OpenAI
 import azure.cognitiveservices.speech as speechsdk
 from dotenv import load_dotenv
+import time
 
 # === Local dev: load .env if present (DO NOT commit .env) ===
 load_dotenv()
@@ -21,6 +22,7 @@ ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+
 Api_Base_url = os.getenv("PUBLIC_BASE_URL")
 
 # Initialize OpenAI client
@@ -54,7 +56,7 @@ def cleanup_old_audio_files(max_age_seconds=300):
 # === Health check ===
 @app.route("/", methods=["GET"])
 def health_check():
-    print("[DEBUG] Health check hit")
+    # print("[DEBUG] Health check hit")
     return Response("LPU Course Bot is running", content_type="text/plain")
 
 # === MAKE OUTBOUND CALL ===
@@ -79,7 +81,7 @@ def make_call():
             return {"success": False, "message": "Twilio credentials missing"}, 500
 
         client_twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        base_url = Api_Base_url
+        base_url =Api_Base_url
         if not base_url:
             print("[ERROR] PUBLIC_BASE_URL not set")
             app.logger.error("[ERROR] PUBLIC_BASE_URL not set")
@@ -107,6 +109,7 @@ def make_call():
 @app.route("/answer", methods=["POST"])
 def answer_call():
     try:
+        print("answer_call endpoinnt hit")
         repeat = request.args.get("repeat", "false").lower() == "true"
         print(f"[INFO] Answering call. Repeat: {repeat}")
         resp = VoiceResponse()
@@ -131,49 +134,104 @@ def answer_call():
 # === PROCESS RECORDING ===
 @app.route("/process_recording", methods=["POST"])
 def process_recording():
+    start_time = time.time()  # Total start time
     try:
         recording_url = request.form.get("RecordingUrl")
         call_sid = request.form.get("CallSid")
+        print("recoring_url:", recording_url)
         print(f"[DEBUG] Recording URL: {recording_url}, CallSid: {call_sid}")
         app.logger.info(f"[DEBUG] Recording URL: {recording_url}, CallSid: {call_sid}")
-        # Download Twilio recording
-        audio_response = requests.get(recording_url + ".wav", auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN), timeout=20)
-        audio_response.raise_for_status()
 
+        # --- Step 1: Download Twilio recording ---
+        stt_start = time.time()
+        audio_response = requests.get(
+            recording_url + ".wav",
+            auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+            timeout=20
+        )
+        audio_response.raise_for_status()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
             temp_audio.write(audio_response.content)
             temp_audio_path = temp_audio.name
+        print(f"[TIMING] Audio download time: {time.time() - stt_start:.2f} sec")
 
-        # Transcribe
+        # --- Step 2: STT ---
+        stt_process_start = time.time()
         transcription, detected_lang = transcribe_with_azure(temp_audio_path)
+        stt_process_end = time.time()
         print(f"[TRANSCRIPTION]: {transcription}")
         print(f"[DETECTED LANG]: {detected_lang}")
         app.logger.info(f"[TRANSCRIPTION]: {transcription}")
         app.logger.info(f"[DETECTED LANG]: {detected_lang}")
-        
+        print(f"[TIMING] STT processing time: {stt_process_end - stt_process_start:.2f} sec")
+
         if not transcription:
             resp = VoiceResponse()
             resp.say("Sorry, I didn't catch that. Please speak clearly after the beep.", voice="Polly.Joanna", language="en-IN")
             resp.redirect("/answer?repeat=true")
             return Response(str(resp), mimetype="text/xml")
 
-        # Language-specific prompt
+        # --- Step 3: Build Prompt ---
+        prompt_start = time.time()
         if detected_lang == "hi-IN":
-            prompt_text = f"The user said: '{transcription}'. Respond in Hinglish. Keep it short."
+            prompt_text = (
+                f"The user asked (in Hindi): '{transcription}'. "
+                "You are an official assistant for Lovely Professional University (LPU). "
+                "Answer in Hinglish (mix Hindi + English), keep it polite and short. "
+                "Provide only helpful details about LPU courses, admissions, fees, campus, and other official information. "
+                "If you don't know, politely suggest contacting the LPU helpline."
+            )
+        elif detected_lang == "kn-IN":
+            prompt_text = (
+                f"The user asked (in Kannada): '{transcription}'. "
+                "You are an official assistant for Lovely Professional University (LPU). "
+                "Answer in Kannada, keep it polite and short. "
+                "Provide only helpful details about LPU courses, admissions, fees, campus, and other official information. "
+                "If you don't know, politely suggest contacting the LPU helpline."
+            )
+        elif detected_lang == "mr-IN":
+            prompt_text = (
+                f"The user asked (in Marathi): '{transcription}'. "
+                "You are an official assistant for Lovely Professional University (LPU). "
+                "Answer in Marathi, keep it polite and short. "
+                "Provide only helpful details about LPU courses, admissions, fees, campus, and other official information. "
+                "If you don't know, politely suggest contacting the LPU helpline."
+            )
         else:
-            prompt_text = f"The user said: '{transcription}'. Respond in English. Keep it short."
+            prompt_text = (
+                f"The user asked (in English): '{transcription}'. "
+                "You are an official assistant for Lovely Professional University (LPU). "
+                "Answer in English, keep it polite and short. "
+                "Provide only helpful details about LPU courses, admissions, fees, campus, and other official information. "
+                "If you don't know, politely suggest contacting the LPU helpline."
+            )
+        prompt_end = time.time()
+        print(f"[TIMING] Prompt building time: {prompt_end - prompt_start:.2f} sec")
 
-        # AI Response
-        completion = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt_text}])
+        # --- Step 4: AI Response ---
+        ai_start = time.time()
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt_text}]
+        )
         ai_response = completion.choices[0].message.content.strip()
+        ai_end = time.time()
         print(f"[AI RESPONSE]: {ai_response}")
         app.logger.info(f"[AI RESPONSE]: {ai_response}")
-        
-        # Generate audio
+        print(f"[TIMING] AI generation time: {ai_end - ai_start:.2f} sec")
+
+        # --- Step 5: TTS ---
+        tts_start = time.time()
         audio_url, filename = generate_elevenlabs_audio(ai_response, call_sid)
+        tts_end = time.time()
         print(f"[AUDIO URL]: {audio_url}")
         app.logger.info(f"[AUDIO URL]: {audio_url}")
-        
+        print(f"[TIMING] TTS generation time: {tts_end - tts_start:.2f} sec")
+
+        # --- Total ---
+        total_time = time.time() - start_time
+        print(f"[TIMING] Total /process_recording time: {total_time:.2f} sec")
+
         # Play audio
         resp = VoiceResponse()
         resp.play(audio_url)
@@ -187,6 +245,7 @@ def process_recording():
         resp.say("Sorry, an error occurred while processing your request.", voice="Polly.Joanna", language="en-IN")
         return Response(str(resp), mimetype="text/xml")
 
+
 # === AZURE STT ===
 def transcribe_with_azure(audio_path):
     try:
@@ -195,12 +254,19 @@ def transcribe_with_azure(audio_path):
         
         speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_REGION)
         audio_config = speechsdk.audio.AudioConfig(filename=audio_path)
-        auto_detect_config = speechsdk.AutoDetectSourceLanguageConfig(languages=["en-IN", "hi-IN"])
-        recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config, auto_detect_source_language_config=auto_detect_config)
+        auto_detect_config = speechsdk.AutoDetectSourceLanguageConfig(languages=["en-IN", "hi-IN","kn-IN","mr-IN"])
+        recognizer = speechsdk.SpeechRecognizer(
+            speech_config=speech_config, 
+            audio_config=audio_config, 
+            auto_detect_source_language_config=auto_detect_config
+            )
+        
         result = recognizer.recognize_once()
 
         if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            detected = result.properties.get(speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult)
+            detected = result.properties.get(
+                speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult
+                )
             return result.text.strip(), detected
         elif result.reason == speechsdk.ResultReason.NoMatch:
             return "", ""
