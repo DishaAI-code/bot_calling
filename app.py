@@ -161,10 +161,11 @@ def process_recording():
         # --- Step 1: Download Twilio recording ---
         stt_start = time.time()
         audio_response = requests.get(
-            recording_url + ".wav",
+            recording_url,
             auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
             timeout=20
         )
+        print(f"audio url is ", recording_url)
         audio_response.raise_for_status()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
             temp_audio.write(audio_response.content)
