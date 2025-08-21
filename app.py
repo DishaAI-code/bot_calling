@@ -134,9 +134,11 @@ def answer_call():
         else:
             resp.say("Hello, I am calling from LPU.", voice="Polly.Joanna", language="en-IN")
             resp.say("Please ask your question after the beep.", voice="Polly.Joanna", language="en-IN")
+            # app.logger.info(f"[audio base url is]: {api}")
 
+        #  added wav here in recording line 
         resp.record(
-            action="/process_recording", 
+            action="/process_recording"+ ".wav",  
             method="POST", max_length=30, 
             timeout=3, play_beep=True
             )
