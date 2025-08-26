@@ -19,13 +19,11 @@ AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
 AZURE_REGION = os.getenv("AZURE_REGION", "eastus2")
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
-# TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-# TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-# TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-TWILIO_ACCOUNT_SID ="AC7059078eba3a6737e3c317393eb2b19f"
-TWILIO_AUTH_TOKEN ="f461045d60373c8befb947398b7b3cbf"
-TWILIO_PHONE_NUMBER ="+15713807389"
-Api_Base_url = "https://0b2338cabf69.ngrok-free.app"
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+
+Api_Base_url = os.getenv("PUBLIC_BASE_URL")
 # Initialize OpenAI client
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
@@ -134,9 +132,11 @@ def answer_call():
         else:
             resp.say("Hello, I am calling from LPU.", voice="Polly.Joanna", language="en-IN")
             resp.say("Please ask your question after the beep.", voice="Polly.Joanna", language="en-IN")
+            # app.logger.info(f"[audio base url is]: {api}")
 
+        #  added wav here in recording line 
         resp.record(
-            action="/process_recording", 
+            action="/process_recording"+ ".wav",  
             method="POST", max_length=30, 
             timeout=3, play_beep=True
             )
