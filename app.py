@@ -56,7 +56,7 @@ def cleanup_old_audio_files(max_age_seconds=300):
 @app.route("/", methods=["GET"])
 def health_check():
     # print("[DEBUG] Health check hit")
-    return Response("LPU Course Bot is running", content_type="text/plain")
+    return Response("route url hello world", content_type="text/plain")
 
 # === MAKE OUTBOUND CALL ===
 @app.route("/makecall", methods=["POST"])
