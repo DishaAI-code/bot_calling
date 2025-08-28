@@ -122,11 +122,11 @@ def answer_call():
             print("inside repeat block, repeat is true")
             print(f"detected_lang: {detected_lang}")
             if(detected_lang == "hi-IN"):
-                resp.say("आप फिर से सवाल पूछ सकते हैं।", voice="Polly.Anika", language="hi-IN")
+                resp.say("आप फिर से सवाल पूछ सकते हैं।", voice="Polly.Aditi", language="hi-IN")
             elif(detected_lang == "kn-IN"):
-                resp.say("ಈಗ ನೀವು ಮತ್ತೊಂದು ಪ್ರಶ್ನೆಯನ್ನು ಕೇಳಬಹುದು.", voice="Polly.Anika", language="kn-IN")
+                resp.say("ಈಗ ನೀವು ಮತ್ತೊಂದು ಪ್ರಶ್ನೆಯನ್ನು ಕೇಳಬಹುದು.", voice="Polly.Aditi", language="kn-IN")
             elif(detected_lang == "mr-IN"): 
-                resp.say("तुम्ही पुन्हा प्रश्न विचारू शकता.", voice="Polly.Anika", language="mr-IN")
+                resp.say("तुम्ही पुन्हा प्रश्न विचारू शकता.", voice="Polly.Aditi", language="mr-IN")
             else:   
                 resp.say("You can ask another question now.", voice="Polly.Joanna", language="en-IN")
         else:
