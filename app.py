@@ -136,7 +136,7 @@ def answer_call():
 
         #  added wav here in recording line 
         resp.record(
-            action="/process_recording"+ ".wav",  
+            action="/process_recording",  
             method="POST", max_length=30, 
             timeout=3, play_beep=True
             )
