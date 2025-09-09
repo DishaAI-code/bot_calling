@@ -1,4 +1,4 @@
-# app2_fixed.py
+# its just replica of app2.py for testing Local LLM only 
 import os
 import time
 import uuid
