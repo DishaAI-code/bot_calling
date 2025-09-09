@@ -27,6 +27,8 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 Api_Base_url = os.getenv("PUBLIC_BASE_URL")  # keep your public base here
 
+
+
 # Initialize OpenAI client (you already had this; not used heavily but kept)
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
