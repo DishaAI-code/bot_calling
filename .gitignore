@@ -39,3 +39,14 @@ chroma_db/eb1e171a-032e-4e36-9013-f77c1b06a181/link_lists.bin
 __pycache__
 scraper.cpython-312.pyc
 vector_db.cpython-312.pyc
+
+#production_code_replica
+production_code_replica.py
+
+#phoenix config
+pyvenv.cfg
+phoenix_data
+
+# file to ignore ths created while testing in local machine
+server.py
+test.py
