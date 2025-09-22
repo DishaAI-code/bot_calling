@@ -39,8 +39,7 @@ from pipecat.services.azure.stt import AzureSTTService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 
-# Langfuse (optional)
-from langfuse import get_client
+
 
 # === ENV ===
 load_dotenv()
