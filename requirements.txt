@@ -1,11 +1,51 @@
 
 
-# Flask
-# twilio
-# requests
-# openai>=1.0.0
-# azure-cognitiveservices-speech
-# python-dotenv
+# # Flask
+# # twilio
+# # requests
+# # openai>=1.0.0
+# # azure-cognitiveservices-speech
+# # python-dotenv
+
+
+# # Web frameworks
+# Flask==2.3.2
+# fastapi==0.116.1
+# uvicorn==0.35.0
+# starlette==0.47.3
+
+# # Twilio API
+# twilio==8.3.0
+
+# # Pipecat and its AI components
+# pipecat==0.3.0
+# pipecat-ai==0.0.85
+# pydub==0.25.1
+# silero-vad==6.0.0
+# watchfiles==1.1.0
+# websockets==14.2
+# websocket-client==1.8.0
+# # Azure Cognitive Services Speech
+# azure-cognitiveservices-speech==1.42.0
+# azure-core==1.35.0
+# # OpenAI LLM
+# openai==1.97.0
+
+# opentelemetry-api==1.21.0
+# opentelemetry-sdk==1.21.0
+# opentelemetry-exporter-otlp==1.21.0
+
+# # Environment variables
+# python-dotenv==1.0.0
+
+# # Logging
+# loguru==0.7.3
+
+# # Langfuse client
+# langfuse==3.3.4
+
+# # HTTP requests
+# requests==2.32.4
 
 
 # Web frameworks
@@ -25,15 +65,18 @@ silero-vad==6.0.0
 watchfiles==1.1.0
 websockets==14.2
 websocket-client==1.8.0
+
 # Azure Cognitive Services Speech
 azure-cognitiveservices-speech==1.42.0
 azure-core==1.35.0
+
 # OpenAI LLM
 openai==1.97.0
 
-opentelemetry-api==1.21.0
-opentelemetry-sdk==1.21.0
-opentelemetry-exporter-otlp==1.21.0
+# 🔹 Do NOT pin opentelemetry here, let langfuse choose
+# opentelemetry-api
+# opentelemetry-sdk
+# opentelemetry-exporter-otlp
 
 # Environment variables
 python-dotenv==1.0.0
