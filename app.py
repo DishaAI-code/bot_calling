@@ -45,17 +45,17 @@ from langfuse import get_client
 # === ENV ===
 load_dotenv()
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_ACCOUNT_SID =os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
-AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION")
-ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
-ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID")
+AZURE_SPEECH_REGION = os.getenv("AZURE_REGION")
+ELEVEN_API_KEY =os.getenv("ELEVEN_API_KEY")
+ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID")  # Default voice
 
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")  # Your public URL here, e.g., from ngrok
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_UR")  # Your public URL here, e.g., from ngrok
 # Langfuse config
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
