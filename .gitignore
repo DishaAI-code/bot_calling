@@ -50,3 +50,5 @@ phoenix_data
 # file to ignore ths created while testing in local machine
 server.py
 test.py
+2209_bot.py
+2209_app.py
