@@ -19,8 +19,10 @@ twilio==8.3.0
 
 # Pipecat and its AI components
 pipecat==0.3.0
-silero-vad==6.0.0   # for SileroVADAnalyzer
-
+pipecat-ai==0.0.85
+pydub==0.25.1
+silero-vad=6.0.0
+watchfiles==1.1.0
 # Azure Cognitive Services Speech
 azure-cognitiveservices-speech==1.42.0
 

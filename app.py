@@ -1,4 +1,3 @@
-
 import os
 import asyncio
 import time
@@ -149,7 +148,17 @@ async def twilio_media_ws(websocket: WebSocket):
     tts = ElevenLabsTTSService(api_key=ELEVEN_API_KEY, voice_id=ELEVEN_VOICE_ID)
 
     messages = [
-        {"role": "system", "content": "You are a friendly AI assistant. Detect the user’s language and reply in that language (English, Hindi, Gujarati). Keep it short."}
+        {
+            "role": "system", 
+            "content": """You are a multilingual AI assistant. Follow these rules strictly:
+            1. Always detect the user's language from their input text
+            2. Respond in the EXACT SAME LANGUAGE as the user's last message
+            3. If user switches languages, switch immediately to their new language
+            4. Supported languages: English (en), Hindi (hi), Gujarati (gu),kannada(kn)
+            5. Keep responses short and conversational
+            
+            Example: If user speaks Hindi, respond in Hindi. If they switch to English, respond in respective language."""
+        }
     ]
     ctx = OpenAILLMContext(messages)
     ctx_agg = llm.create_context_aggregator(ctx)
@@ -218,4 +227,8 @@ if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8000))  # Use Azure’s port or 8000 locally
     uvicorn.run("app:asgi_app", host="0.0.0.0", port=port)
+
+
+
+
 
