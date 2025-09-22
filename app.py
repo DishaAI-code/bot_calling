@@ -215,4 +215,7 @@ async def twilio_media_ws(websocket: WebSocket):
 
 # Entrypoint
 if __name__ == "__main__":
-    uvicorn.run("test:asgi_app", host="0.0.0.0", port=8000, reload=True)
+    import os
+    port = int(os.environ.get("PORT", 8000))  # Use Azure’s port or 8000 locally
+    uvicorn.run("app:asgi_app", host="0.0.0.0", port=port)
+
