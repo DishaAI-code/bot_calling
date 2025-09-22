@@ -73,10 +73,7 @@ azure-core==1.35.0
 # OpenAI LLM
 openai==1.97.0
 
-# 🔹 Do NOT pin opentelemetry here, let langfuse choose
-# opentelemetry-api
-# opentelemetry-sdk
-# opentelemetry-exporter-otlp
+
 
 # Environment variables
 python-dotenv==1.0.0
@@ -84,8 +81,6 @@ python-dotenv==1.0.0
 # Logging
 loguru==0.7.3
 
-# Langfuse client
-langfuse==3.3.4
 
 # HTTP requests
 requests==2.32.4

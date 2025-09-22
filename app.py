@@ -56,14 +56,6 @@ ELEVEN_API_KEY =os.getenv("ELEVEN_API_KEY")
 ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID")  # Default voice
 
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_UR")  # Your public URL here, e.g., from ngrok
-# Langfuse config
-LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
-LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST")
-if LANGFUSE_SECRET_KEY:
-    os.environ["LANGFUSE_SECRET_KEY"] = LANGFUSE_SECRET_KEY
-    os.environ["LANGFUSE_HOST"] = LANGFUSE_HOST
-langfuse = get_client() if LANGFUSE_SECRET_KEY else None
 
 # === FLASK app for HTTP routes ===
 flask_app = Flask(__name__)
