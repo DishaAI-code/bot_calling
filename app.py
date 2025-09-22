@@ -1,17 +1,25 @@
+
+# test.py
 import os
 import asyncio
+import requests
 import time
 import uuid
 from dotenv import load_dotenv
 
-from flask import Flask, request, Response, jsonify
+# Flask (for your existing HTTP routes)
+from flask import Flask, request, Response, send_from_directory, jsonify
+
+# FastAPI (for WebSocket / Pipecat transport)
 from fastapi import FastAPI, WebSocket
 from starlette.middleware.wsgi import WSGIMiddleware
 import uvicorn
 
+# Twilio helpers
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.rest import Client
 
+# Pipecat imports (used in the streaming pipeline)
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import TextFrame, LLMRunFrame, LLMFullResponseEndFrame
@@ -24,18 +32,19 @@ from pipecat.runner.utils import parse_telephony_websocket
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketTransport, FastAPIWebsocketParams
 from starlette.websockets import WebSocketState
+# from pipecat.pipeline.observer import PipelineObserver
 
+# --- Azure + ElevenLabs + OpenAI ---
 from pipecat.services.azure.stt import AzureSTTService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 
+# Langfuse (optional)
 from langfuse import get_client
-
-# === Always enable DEBUG logging ===
-os.environ["LOGURU_LEVEL"] = "DEBUG"
 
 # === ENV ===
 load_dotenv()
+
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
@@ -46,7 +55,7 @@ AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION")
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID")
 
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")  # Your public URL here, e.g., from ngrok
 # Langfuse config
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
@@ -63,12 +72,13 @@ flask_app = Flask(__name__)
 def health_check():
     return Response("Flask OK", content_type="text/plain")
 
+# Outbound call
 @flask_app.route("/makecall", methods=["POST"])
 def make_call():
     data = request.get_json(silent=True) or {}
     to_number = data.get("phone") or data.get("to")
     if not to_number:
-        return jsonify({"success": False, "message": "Phone number required"}), 400
+        return jsonify({"success": False, "message": "Phone number is required"}), 400
 
     client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     try:
@@ -84,13 +94,19 @@ def make_call():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
+# Answer call
 @flask_app.route("/answer", methods=["POST"])
 def answer_call():
+    call_sid = request.form.get("CallSid", "unknown")
+
     resp = VoiceResponse()
+    # Start Twilio Media Streams → FastAPI WebSocket
     ws_url = PUBLIC_BASE_URL.replace("https://", "wss://") + "/twilio/ws"
     resp.connect().stream(url=ws_url)
+
     return Response(str(resp), mimetype="text/xml")
 
+# Status callback
 @flask_app.route("/status", methods=["POST"])
 def call_status():
     call_sid = request.form.get("CallSid")
@@ -100,24 +116,22 @@ def call_status():
 
 # === FASTAPI app ===
 asgi_app = FastAPI()
+# Mount Flask under /flask → all HTTP routes live here
 asgi_app.mount("/flask", WSGIMiddleware(flask_app))
 
-def _now():
-    return time.strftime("%H:%M:%S")
-
-# === WS for Twilio Media Stream ===
+# Pipecat WebSocket endpoint
 @asgi_app.websocket("/twilio/ws")
 async def twilio_media_ws(websocket: WebSocket):
     await websocket.accept()
+
     try:
         transport_type, call_data = await parse_telephony_websocket(websocket)
     except Exception as e:
-        logger.error(f"Parse error: {e}")
-        if websocket.client_state != WebSocketState.DISCONNECTED:
-            await websocket.close()
+        logger.error(f"Failed to parse Twilio websocket: {e}")
+        await websocket.close()
         return
 
-    logger.info(f"Transport: {transport_type}, call_data: {call_data}")
+    logger.info(f"Pipecat transport: {transport_type}, call_data: {call_data}")
 
     serializer = TwilioFrameSerializer(
         stream_sid=call_data["stream_id"],
@@ -126,27 +140,34 @@ async def twilio_media_ws(websocket: WebSocket):
         auth_token=TWILIO_AUTH_TOKEN,
     )
 
-    transport = FastAPIWebsocketTransport(
-        websocket=websocket,
-        params=FastAPIWebsocketParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(),
-            serializer=serializer,
-        ),
+    transport_params = FastAPIWebsocketParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+        add_wav_header=False,
+        vad_analyzer=SileroVADAnalyzer(),
+        serializer=serializer,
     )
 
-    # services
+    transport = FastAPIWebsocketTransport(websocket=websocket, params=transport_params)
+
+    # === Services ===
     stt = AzureSTTService(
         api_key=AZURE_SPEECH_KEY,
         region=AZURE_SPEECH_REGION,
         auto_detect_source_language=True,
-        languages=["en-IN", "hi-IN", "gu-IN"]
+        languages=["en-IN", "hi-IN", "gu-IN","kn-IN"]
+    )
+
+    llm_service = OpenAILLMService(api_key=OPENAI_API_KEY, model="gpt-4o-mini")
+
+    tts = ElevenLabsTTSService(
+        api_key=ELEVEN_API_KEY,
+        voice_id=ELEVEN_VOICE_ID,
+        stability=0.5,
+        similarity_boost=0.75
     )
     
-    llm = OpenAILLMService(api_key=OPENAI_API_KEY, model="gpt-4o-mini")
-    tts = ElevenLabsTTSService(api_key=ELEVEN_API_KEY, voice_id=ELEVEN_VOICE_ID)
-
+    # === Context ===
     messages = [
         {
             "role": "system", 
@@ -160,73 +181,96 @@ async def twilio_media_ws(websocket: WebSocket):
             Example: If user speaks Hindi, respond in Hindi. If they switch to English, respond in respective language."""
         }
     ]
-    ctx = OpenAILLMContext(messages)
-    ctx_agg = llm.create_context_aggregator(ctx)
+    context = OpenAILLMContext(messages)
+    context_agg = llm_service.create_context_aggregator(context)
+    
     rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
 
+    # === Pipeline ===
     pipeline = Pipeline([
         transport.input(),
         rtvi,
         stt,
-        ctx_agg.user(),
-        llm,
+        context_agg.user(),
+        llm_service,
         tts,
         transport.output(),
-        ctx_agg.assistant(),
+        context_agg.assistant(),
     ])
 
     task = PipelineTask(
         pipeline,
-        params=PipelineParams(audio_in_sample_rate=8000, audio_out_sample_rate=8000),
+        params=PipelineParams(
+            audio_in_sample_rate=8000,
+            audio_out_sample_rate=8000,
+            enable_metrics=True,
+            enable_usage_metrics=True,
+        ),
         observers=[RTVIObserver(rtvi)],
     )
-
-    # === Debug Handlers ===
+    
+    # === Debug Handlers - Register them on the individual services ===
     @stt.event_handler(TextFrame)
     async def on_stt(frame: TextFrame):
-        ts = _now()
-        text = getattr(frame, "text", None)
-        lang = getattr(frame, "language", None)
-        conf = getattr(frame, "confidence", None)
-        print(f"[{ts}] [STT] text={text} | lang={lang} | conf={conf}", flush=True)
+        ts = time.strftime("%H:%M:%S")
+        language_detected = frame.language or "unknown"
+        
+        print(f"\n🎤 === STT DETECTION ===")
+        print(f"[{ts}] Language: {language_detected}")
+        print(f"[{ts}] Text: {frame.text}")
+        print("=" * 50)
 
-    @llm.event_handler(LLMRunFrame)
-    async def on_llm_run(frame: LLMRunFrame):
-        ts = _now()
-        print(f"[{ts}] [LLM START] Prompt sent to model...", flush=True)
+    @llm_service.event_handler(LLMRunFrame)
+    async def on_llm_start(frame: LLMRunFrame):
+        ts = time.strftime("%H:%M:%S")
+        print(f"\n🚀 === LLM START ===")
+        print(f"[{ts}] LLM processing started")
+        print("=" * 50)
 
-    @llm.event_handler(LLMFullResponseEndFrame)
-    async def on_llm_response_end(frame: LLMFullResponseEndFrame):
-        ts = _now()
-        final_text = getattr(frame, "final_text", None)
-        print("\n" + "="*50, flush=True)
-        print(f"[{ts}] [LLM FINAL] {final_text}", flush=True)
-        print("="*50 + "\n", flush=True)
+    @llm_service.event_handler(LLMFullResponseEndFrame)
+    async def on_llm_end(frame: LLMFullResponseEndFrame):
+        ts = time.strftime("%H:%M:%S")
+        print(f"\n✅ === LLM COMPLETE ===")
+        print(f"[{ts}] LLM response completed")
+        print("=" * 50)
 
-    # Transport events
+    @tts.event_handler(TextFrame)
+    async def on_tts_input(frame: TextFrame):
+        ts = time.strftime("%H:%M:%S")
+        print(f"\n🔊 === TTS INPUT ===")
+        print(f"[{ts}] Text to be spoken: {frame.text}")
+        print("=" * 50)
+    
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport_inst, client):
-        logger.info("Twilio client connected")
-        messages.append({"role": "system", "content": "Say hello to the caller."})
+        logger.info("Client connected to Twilio Media Stream")
+        # Add a more explicit language instruction in the first message
+        welcome_message = "Hello! I'm your multilingual assistant. I can speak English, Hindi, and Gujarati. How can I help you today?"
+        messages.append({"role": "assistant", "content": welcome_message})
         await task.queue_frame(LLMRunFrame())
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport_inst, client):
-        logger.info("Twilio client disconnected")
+        logger.info("Client disconnected")
         await task.cancel()
 
     runner = PipelineRunner(handle_sigint=False)
     try:
         await runner.run(task)
+    except Exception as e:
+        logger.exception(f"Pipeline error: {e}")
     finally:
         if websocket.client_state != WebSocketState.DISCONNECTED:
-            await websocket.close()
+            try:
+                await websocket.close()
+            except Exception as e:
+                logger.warning(f"WebSocket already closed: {e}")
 
 # Entrypoint
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 8000))  # Use Azure’s port or 8000 locally
-    uvicorn.run("app:asgi_app", host="0.0.0.0", port=port)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("app:asgi_app", host="0.0.0.0", port=port, reload=True)
+
 
 
 
