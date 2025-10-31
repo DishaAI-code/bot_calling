@@ -52,3 +52,14 @@ server.py
 test.py
 2209_bot.py
 2209_app.py
+0710_app.py
+2409_app.py
+2509_app.py
+2909_app.py
+31_10_app.py
+31_10_llm_utils.py
+app_working.py
+# .env example file
+.env.example
+
+

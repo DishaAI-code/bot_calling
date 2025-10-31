@@ -162,14 +162,13 @@ async def twilio_media_ws(websocket: WebSocket):
     messages = [
         {
             "role": "system", 
-            "content": """You are a multilingual AI assistant. Follow these rules strictly:
-            1. Always detect the user's language from their input text
-            2. Respond in the EXACT SAME LANGUAGE as the user's last message
-            3. If user switches languages, switch immediately to their new language
-            4. Supported languages: English (en), Hindi (hi), Gujarati (gu),kannada(kn)
-            5. Keep responses short and conversational
-            
-            Example: If user speaks Hindi, respond in Hindi. If they switch to English, respond in respective language."""
+            "content": """You are a multilingual AI voice assistant. Follow these rules strictly:
+            1. Detect the user's language from speech.
+            2. Respond in the SAME LANGUAGE as the user's last message — except for the very first message, which must be in English only.
+            3. If the user switches languages, switch immediately.
+            4. Supported languages: English (en), Hindi (hi), Gujarati (gu), Kannada (kn).
+            5. Keep responses short and conversational.
+            6. The first greeting must always be in English only."""
         }
     ]
     context = OpenAILLMContext(messages)
@@ -236,7 +235,7 @@ async def twilio_media_ws(websocket: WebSocket):
     async def on_client_connected(transport_inst, client):
         logger.info("Client connected to Twilio Media Stream")
         # Add a more explicit language instruction in the first message
-        welcome_message = "Hello! I'm your multilingual assistant. I can speak English, Hindi, and Gujarati. How can I help you today?"
+        welcome_message = "Hi, I am your AI assistant calling from Autodesk. I can understand and speak English, Hindi, Gujarati, and Kannada. How can I help you today?"
         messages.append({"role": "assistant", "content": welcome_message})
         await task.queue_frame(LLMRunFrame())
 
