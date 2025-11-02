@@ -1,5 +1,4 @@
 
-# test.py
 import os
 import asyncio
 import requests
@@ -55,6 +54,8 @@ ELEVEN_API_KEY =os.getenv("ELEVEN_API_KEY")
 ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID")  # Default voice
 
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_UR")  # Your public URL here, e.g., from ngrok
+
+
 
 # === FLASK app for HTTP routes ===
 flask_app = Flask(__name__)
@@ -160,17 +161,18 @@ async def twilio_media_ws(websocket: WebSocket):
     
     # === Context ===
     messages = [
-        {
-            "role": "system", 
-            "content": """You are a multilingual AI voice assistant. Follow these rules strictly:
-            1. Detect the user's language from speech.
-            2. Respond in the SAME LANGUAGE as the user's last message — except for the very first message, which must be in English only.
-            3. If the user switches languages, switch immediately.
-            4. Supported languages: English (en), Hindi (hi), Gujarati (gu), Kannada (kn).
-            5. Keep responses short and conversational.
-            6. The first greeting must always be in English only."""
-        }
-    ]
+    {
+        "role": "system",
+        "content": """You are a multilingual AI voice assistant. Follow these rules strictly:
+1. The user will be greeted with a greeting message when the call connects.
+2. Detect the user's spoken language automatically from their speech.
+3. Respond in the **same language** as the user's last detected message.
+4. If the user switches language, switch immediately to that language.
+5. Supported languages: English (en), Hindi (hi), Gujarati (gu), Kannada (kn).
+6. Keep responses short, friendly, and conversational.
+7. Do not repeat the welcome greeting - it has already been said."""
+    }
+]
     context = OpenAILLMContext(messages)
     context_agg = llm_service.create_context_aggregator(context)
     
@@ -231,13 +233,23 @@ async def twilio_media_ws(websocket: WebSocket):
         print(f"[{ts}] Text to be spoken: {frame.text}")
         print("=" * 50)
     
+    # @transport.event_handler("on_client_connected")
+    # async def on_client_connected(transport_inst, client):
+    #     logger.info("Client connected to Twilio Media Stream")
+    #     # Send complete welcome message directly to TTS
+    #     welcome_message = "Hello! I am your AI assistant calling from Autodesk. I can understand and speak English, Hindi, Gujarati, and Kannada. How can I help you today?"
+    #     # Queue it directly as a TextFrame
+    #     await task.queue_frame(TextFrame(welcome_message))
+
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport_inst, client):
         logger.info("Client connected to Twilio Media Stream")
-        # Add a more explicit language instruction in the first message
-        welcome_message = "Hi, I am your AI assistant calling from Autodesk. I can understand and speak English, Hindi, Gujarati, and Kannada. How can I help you today?"
-        messages.append({"role": "assistant", "content": welcome_message})
-        await task.queue_frame(LLMRunFrame())
+        # Add the greeting as an assistant message to context first
+        greeting = "Hello I am your AI assistant calling from Autodesk I can understand and speak English, Hindi, Gujarati, and Kannada How can I help you today?"
+        # Add to context so the assistant "remembers" saying it
+        messages.append({"role": "system", "content": greeting})
+        # Now send it directly to TTS - try breaking it into smaller chunks
+        await task.queue_frame(TextFrame(greeting))
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport_inst, client):
@@ -260,9 +272,5 @@ async def twilio_media_ws(websocket: WebSocket):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("app:asgi_app", host="0.0.0.0", port=port, reload=True)
-
-
-
-
 
 
