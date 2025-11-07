@@ -1,0 +1,11 @@
+{
+    "trunk": {
+        "name": "My outbound trunk",
+        "address": "dishaai.pstn.twilio.com",
+        "numbers": [
+            "+14177445778"
+        ],
+        "auth_username": "live_kit",
+        "auth_password": "Ritesh@6203879448"
+    }
+}

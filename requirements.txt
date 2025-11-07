@@ -1,86 +1,29 @@
+# livekit>=0.18.2
+# livekit-agents>=0.12.11
+# livekit-plugins-openai>=0.10.17
+# livekit-plugins-azure>=1.2.15
+# livekit-plugins-silero>=0.7.4
+# livekit-plugins-turn-detector>=0.4.0
+# python-dotenv~=1.0
+# azure-cognitiveservices-speech>=1.40.0
 
+# livekit>=1.0.12
+# livekit-agents>=1.2.17
+# livekit-api>=1.0.5
+# livekit-plugins-openai==1.1.7
+# livekit-plugins-silero==1.1.7
+# livekit-protocol==1.0.4
 
-# # Flask
-# # twilio
-# # requests
-# # openai>=1.0.0
-# # azure-cognitiveservices-speech
-# # python-dotenv
-
-
-# # Web frameworks
-# Flask==2.3.2
-# fastapi==0.116.1
-# uvicorn==0.35.0
-# starlette==0.47.3
-
-# # Twilio API
-# twilio==8.3.0
-
-# # Pipecat and its AI components
-# pipecat==0.3.0
-# pipecat-ai==0.0.85
-# pydub==0.25.1
-# silero-vad==6.0.0
-# watchfiles==1.1.0
-# websockets==14.2
-# websocket-client==1.8.0
-# # Azure Cognitive Services Speech
-# azure-cognitiveservices-speech==1.42.0
-# azure-core==1.35.0
-# # OpenAI LLM
-# openai==1.97.0
-
-# opentelemetry-api==1.21.0
-# opentelemetry-sdk==1.21.0
-# opentelemetry-exporter-otlp==1.21.0
-
-# # Environment variables
-# python-dotenv==1.0.0
-
-# # Logging
-# loguru==0.7.3
-
-# # Langfuse client
-# langfuse==3.3.4
-
-# # HTTP requests
-# requests==2.32.4
-
-
-# Web frameworks
-Flask==2.3.2
-fastapi==0.116.1
-uvicorn==0.35.0
-starlette==0.47.3
-
-# Twilio API
-twilio==8.3.0
-
-# Pipecat and its AI components
-pipecat==0.3.0
-pipecat-ai==0.0.85
-pydub==0.25.1
-silero-vad==6.0.0
-watchfiles==1.1.0
-websockets==14.2
-websocket-client==1.8.0
-
-# Azure Cognitive Services Speech
-azure-cognitiveservices-speech==1.42.0
-azure-core==1.35.0
-
-# OpenAI LLM
-openai==1.97.0
-
-
-
-# Environment variables
-python-dotenv==1.0.0
-
-# Logging
-loguru==0.7.3
-
-
-# HTTP requests
-requests==2.32.4
+livekit
+livekit-agents
+livekit-api
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-protocol
+livekit-plugins-azure
+azure-cognitiveservices-speech>=1.40.0
+numpy
+python-dotenv
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0

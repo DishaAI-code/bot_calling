@@ -62,4 +62,9 @@ app_working.py
 # .env example file
 .env.example
 
-
+# file to ignore the created while testing in local machine
+pipcat_app.py
+pipecat_requirement.txt
+pipecat_vectordb.py
+pipecat_llm_utils.py
+pipecat_scrapper.py
