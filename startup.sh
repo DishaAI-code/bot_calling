@@ -3,23 +3,28 @@
 # Azure App Service Startup Script for LiveKit Agent
 # Fixes typing_extensions conflict by ensuring venv packages take precedence
 
-set -e  # Exit on error
-
 echo "========================================="
 echo "🚀 Starting LiveKit Voice Agent"
 echo "========================================="
 
 # Find virtual environment (Azure creates it in different locations)
+# Method 1: Check common locations
 VENV_PATH=""
-for path in "/home/site/wwwroot/antenv" "/tmp/*/antenv"; do
-    if [ -d "$path" ]; then
-        VENV_PATH=$(echo $path)
-        break
-    fi
-done
+if [ -d "/home/site/wwwroot/antenv" ]; then
+    VENV_PATH="/home/site/wwwroot/antenv"
+elif [ -d "/tmp/8de1dd7a72e565e/antenv" ]; then
+    VENV_PATH="/tmp/8de1dd7a72e565e/antenv"
+else
+    # Method 2: Find it dynamically using find command
+    echo "🔍 Searching for virtual environment..."
+    VENV_PATH=$(find /tmp -maxdepth 2 -type d -name "antenv" 2>/dev/null | head -1)
+fi
 
-if [ -z "$VENV_PATH" ]; then
+if [ -z "$VENV_PATH" ] || [ ! -d "$VENV_PATH" ]; then
     echo "❌ ERROR: Virtual environment not found!"
+    echo "Checked locations:"
+    echo "  - /home/site/wwwroot/antenv"
+    echo "  - /tmp/*/antenv"
     exit 1
 fi
 
@@ -30,16 +35,20 @@ if [ -f "$VENV_PATH/bin/activate" ]; then
     source "$VENV_PATH/bin/activate"
     echo "✅ Virtual environment activated"
 else
-    echo "❌ ERROR: Cannot activate virtual environment"
+    echo "❌ ERROR: Cannot activate virtual environment at $VENV_PATH/bin/activate"
     exit 1
 fi
 
 # CRITICAL FIX: Remove Azure's old typing_extensions from import path
 # This forces Python to use the venv's typing_extensions
+echo "🔧 Fixing typing_extensions conflict..."
 if [ -f "/agents/python/typing_extensions.py" ]; then
-    echo "🔧 Backing up and removing Azure's old typing_extensions..."
-    mv /agents/python/typing_extensions.py /agents/python/typing_extensions.py.bak 2>/dev/null || true
-    echo "✅ Old typing_extensions removed from path"
+    echo "   Found old typing_extensions at /agents/python/typing_extensions.py"
+    mv /agents/python/typing_extensions.py /agents/python/typing_extensions.py.bak 2>/dev/null && \
+        echo "   ✅ Old typing_extensions backed up and removed" || \
+        echo "   ⚠️  Could not move file (may need elevated permissions)"
+else
+    echo "   No old typing_extensions found at /agents/python/ (good!)"
 fi
 
 # Upgrade typing_extensions in the venv
