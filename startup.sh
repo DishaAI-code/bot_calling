@@ -39,27 +39,27 @@ else
     exit 1
 fi
 
-# CRITICAL FIX: Remove Azure's old typing_extensions from import path
-# This forces Python to use the venv's typing_extensions
+# CRITICAL FIX: Override PYTHONPATH to use venv FIRST
+# Since we can't delete Azure's old typing_extensions, we override the import path
 echo "🔧 Fixing typing_extensions conflict..."
-if [ -f "/agents/python/typing_extensions.py" ]; then
-    echo "   Found old typing_extensions at /agents/python/typing_extensions.py"
-    mv /agents/python/typing_extensions.py /agents/python/typing_extensions.py.bak 2>/dev/null && \
-        echo "   ✅ Old typing_extensions backed up and removed" || \
-        echo "   ⚠️  Could not move file (may need elevated permissions)"
-else
-    echo "   No old typing_extensions found at /agents/python/ (good!)"
-fi
+echo "   Setting PYTHONPATH to prioritize venv packages..."
+
+# Put venv site-packages FIRST, before /agents/python
+export PYTHONPATH="$VENV_PATH/lib/python3.12/site-packages:${PYTHONPATH}"
+echo "   ✅ PYTHONPATH updated (venv now has priority)"
 
 # Upgrade typing_extensions in the venv
-echo "📥 Upgrading typing_extensions in venv..."
-pip install --upgrade --force-reinstall typing-extensions>=4.8.0 --quiet --no-warn-script-location
-echo "✅ typing_extensions upgraded"
+echo "📥 Installing typing_extensions>=4.8.0 in venv..."
+pip install --upgrade --force-reinstall typing-extensions>=4.8.0 --quiet --no-warn-script-location 2>/dev/null
+echo "✅ typing_extensions installation complete"
 
-# Verify installation
-echo "🔍 Verifying typing_extensions..."
-python -c "import typing_extensions; print(f'   Version: {typing_extensions.__version__}'); from typing_extensions import Sentinel; print('   Sentinel import: OK')" || {
-    echo "❌ ERROR: typing_extensions verification failed"
+# Verify Sentinel import works
+echo "🔍 Verifying Sentinel import..."
+python -c "from typing_extensions import Sentinel; print('   ✅ Sentinel imported successfully!')" 2>&1 || {
+    echo "   ❌ ERROR: Cannot import Sentinel from typing_extensions"
+    echo "   Attempting to diagnose..."
+    python -c "import typing_extensions; print(f'   typing_extensions location: {typing_extensions.__file__}')"
+    python -c "import sys; print('   PYTHONPATH:', sys.path[:3])"
     exit 1
 }
 
