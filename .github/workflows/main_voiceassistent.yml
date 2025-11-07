@@ -92,5 +92,5 @@ jobs:
           general-settings-json: |
             {
               "linuxFxVersion": "PYTHON|3.12",
-              "appCommandLine": "python app.py api"
+              "appCommandLine": "bash startup.sh"
             }

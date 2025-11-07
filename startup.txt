@@ -1,2 +1,2 @@
-python app.py api
+bash startup.sh
 
