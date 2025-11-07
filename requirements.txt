@@ -14,6 +14,9 @@
 # livekit-plugins-silero==1.1.7
 # livekit-protocol==1.0.4
 
+# Fix Azure App Service typing_extensions conflict
+typing-extensions>=4.8.0
+
 livekit
 livekit-agents
 livekit-api
@@ -27,3 +30,4 @@ python-dotenv
 fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
 pydantic>=2.5.0
+protobuf>=4.25.0
