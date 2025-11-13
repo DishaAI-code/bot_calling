@@ -39,7 +39,7 @@ except ImportError:
     Langfuse = None
 
 # Load environment variables
-load_dotenv(dotenv_path=".env.local")
+load_dotenv(dotenv_path=".env")
 
 # Enhanced logging setup
 logging.basicConfig(

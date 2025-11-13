@@ -52,10 +52,10 @@ livekit-protocol
 livekit-plugins-openai
 livekit-plugins-silero
 livekit-plugins-azure
-
+livekit-plugins-deepgram>=0.6.0 
 # STT services
 azure-cognitiveservices-speech>=1.40.0
-deepgram-sdk>=3.0.0
+# deepgram-sdk>=3.0.0
 
 # Groq for Whisper
 groq
