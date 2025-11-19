@@ -70,3 +70,6 @@ pipecat_llm_utils.py
 pipecat_scrapper.py
 
 11_11_app.py
+
+#  dont push outbound-trunk-json
+outbound-trunk.json

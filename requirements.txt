@@ -42,37 +42,41 @@
 
 
 
+#  this is the just past requirement.txt code 
 # Core LiveKit dependencies
-livekit
-livekit-agents
-livekit-api
-livekit-protocol
+# livekit
+# livekit-agents
+# livekit-api
+# livekit-protocol
 
-# LiveKit plugins
-livekit-plugins-openai
-livekit-plugins-silero
-livekit-plugins-azure
-livekit-plugins-deepgram>=0.6.0 
-# STT services
-azure-cognitiveservices-speech>=1.40.0
-# deepgram-sdk>=3.0.0
+# # LiveKit plugins
+# livekit-plugins-openai
+# livekit-plugins-silero
+# livekit-plugins-azure
+# livekit-plugins-deepgram>=0.6.0 
+# # STT services
+# azure-cognitiveservices-speech>=1.40.0
+# # deepgram-sdk>=3.0.0
 
-# Groq for Whisper
-groq
+# # Groq for Whisper
+# groq
 
-# Web framework
-fastapi>=0.104.1
-uvicorn[standard]>=0.24.0
+# # Web framework
+# fastapi>=0.104.1
+# uvicorn[standard]>=0.24.0
 
-# Core dependencies
-pydantic>=2.5.0
-protobuf>=4.25.0
-typing-extensions>=4.8.0
-python-dotenv
-numpy>=1.21.0
+# # Core dependencies
+# pydantic>=2.5.0
+# protobuf>=4.25.0
+# typing-extensions>=4.8.0
+# python-dotenv
+# numpy>=1.21.0
 
-# HTTP client
-httpx
+# # HTTP client
+# httpx
 
-# Optional tracing
-langfuse
+# # Optional tracing
+# langfuse
+
+
+#  this is the current requirement.txt

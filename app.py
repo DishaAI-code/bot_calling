@@ -18,6 +18,7 @@ from livekit.agents import (
     Agent,
     AgentSession,
 )
+
 from livekit.agents.llm import ChatContext, ChatMessage
 from livekit.agents.telemetry import set_tracer_provider
 from livekit.plugins import openai, silero, deepgram
@@ -26,9 +27,15 @@ from pydantic import BaseModel
 from typing import List, Optional, cast
 import threading
 import uvicorn
-
+from livekit.agents import metrics, MetricsCollectedEvent
+# from livekit.agents import metrics, MetricsCollectedEvent
+from livekit.agents import ConversationItemAddedEvent
+from livekit.agents.llm import ImageContent, AudioContent,ChatContent,ChatMessage
+from livekit.agents import UserInputTranscribedEvent
+from langfuse import get_client,observe
 # For Whisper on Groq
 from groq import Groq
+from livekit.plugins import sarvam
 
 # Langfuse SDK for better tracing
 try:
@@ -63,14 +70,17 @@ vad_logger.setLevel(logging.DEBUG)
 outbound_trunk_id = os.getenv("SIP_OUTBOUND_TRUNK_ID")
 deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
 groq_api_key = os.getenv("GROQ_API_KEY")
-
+sarvam_api_key=os.getenv("sarvam_api_key")
 # Validate critical API keys
 if not deepgram_api_key:
-    logger.error("❌ DEEPGRAM_API_KEY not set in environment!")
+    logger.error(" DEEPGRAM_API_KEY not set in environment!")
 if not groq_api_key:
-    logger.error("❌ GROQ_API_KEY not set in environment!")
+    logger.error(" GROQ_API_KEY not set in environment!")
 
+if not sarvam_api_key:
+    logger.error("sarvam api is not in the environment -> It is required for Stt pupose ")
 # Global Langfuse client
+# langfuse_client = get_client()
 langfuse_client = None
 
 # Global agent worker status
@@ -110,7 +120,6 @@ class CallResponse(BaseModel):
 
 
 # ============ API ENDPOINTS ============
-
 @app.get("/")
 async def root():
     """Root endpoint with API information"""
@@ -161,6 +170,7 @@ async def get_language_stats():
         "language_switches": language_stats["switches"],
         "detection_history": language_stats["detections"][-10:],
     }
+    # langfue.create
 
 @app.post("/dispatch/call", response_model=CallResponse)
 async def dispatch_call(request: CallRequest):
@@ -194,7 +204,7 @@ async def dispatch_call(request: CallRequest):
             api.CreateRoomRequest(name=room_name)
         )
         
-        logger.info(f"✅ Created room: {room_name}")
+        logger.info(f" Created room: {room_name}")
         
         dispatch = await lk_api.agent_dispatch.create_dispatch(
             api.CreateAgentDispatchRequest(
@@ -204,7 +214,7 @@ async def dispatch_call(request: CallRequest):
             )
         )
         
-        logger.info(f"✅ Dispatched call to {request.phone_number} in room {room_name}")
+        logger.info(f"Dispatched call to {request.phone_number} in room {room_name}")
         agent_worker_status["calls_dispatched"] += 1
         
         await lk_api.aclose()
@@ -219,7 +229,7 @@ async def dispatch_call(request: CallRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error dispatching call: {e}")
+        logger.error(f" Error dispatching call: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
@@ -251,7 +261,7 @@ async def dispatch_batch_calls(request: BatchCallRequest):
                 "success": False,
                 "error": str(e)
             })
-            logger.error(f"❌ Failed to dispatch call to {phone_number}: {e}")
+            logger.error(f" Failed to dispatch call to {phone_number}: {e}")
     
     return {
         "total": len(request.phone_numbers),
@@ -348,7 +358,7 @@ class LanguageDetector:
             )
             
             elapsed = perf_counter() - start_time
-            lang_detect_logger.info(f"⏱️  Whisper API response time: {elapsed:.3f}s")
+            lang_detect_logger.info(f" Whisper API response time: {elapsed:.3f}s")
             
             # Extract language from response
             detected_language = getattr(response, 'language', None)
@@ -359,9 +369,9 @@ class LanguageDetector:
                 lang_code = self._normalize_language_code(detected_language)
                 
                 lang_detect_logger.info("=" * 80)
-                lang_detect_logger.info(f"🎯 WHISPER LANGUAGE DETECTED: {detected_language} ({lang_code})")
-                lang_detect_logger.info(f"📝 Whisper Transcript: {transcript}")
-                lang_detect_logger.info(f"⏱️  Total detection time: {elapsed:.3f}s")
+                lang_detect_logger.info(f" WHISPER LANGUAGE DETECTED: {detected_language} ({lang_code})")
+                lang_detect_logger.info(f" Whisper Transcript: {transcript}")
+                lang_detect_logger.info(f"Total detection time: {elapsed:.3f}s")
                 lang_detect_logger.info("=" * 80)
                 
                 # Update global stats
@@ -401,7 +411,70 @@ class LanguageDetector:
         
         lang_lower = lang.lower()
         return lang_map.get(lang_lower, lang_lower[:2])
+    
 
+# ============ LLM INPUT/OUTPUT LOGGER WITH LANGFUSE ============
+
+async def log_llm_interaction(user_input: str, llm_response: str, session_metadata: dict = None):
+    """
+    Log LLM input/output to terminal and Langfuse AS A SEPARATE TRACE
+    """
+    from langfuse import get_client
+
+    # Print to terminal
+    print("=" * 80)
+    print("💬 LLM INTERACTION LOG")
+    print("=" * 80)
+    print(f"🎤 USER INPUT (LLM Prompt):\n{user_input}")
+    print("-" * 80)
+    print(f"🤖 AGENT RESPONSE (LLM Output):\n{llm_response}")
+    print("=" * 80)
+    
+    logger.info("Logging to Langfuse")
+
+    try:
+        langfuse_client = get_client()
+
+        if not langfuse_client:
+            logger.debug("Langfuse client not available – skipping LLM trace logging")
+            return
+
+        # Create a NEW root trace (separate from other traces)
+        lf_trace_id = langfuse_client.create_trace_id()
+
+        # Root span for the LLM interaction
+        with langfuse_client.start_as_current_span(
+            name="llm-interaction",
+            trace_context={"trace_id": lf_trace_id},
+            input={"user_message": user_input},
+            output={"agent_response": llm_response},
+            metadata=session_metadata or {},
+        ) as span:
+            # Optionally tag the trace
+            langfuse_client.update_current_trace(
+                tags=["llm-interaction", "voice-agent"]
+            )
+
+            # Child generation span for the LLM call
+            with span.start_as_current_generation(
+                name="gpt4-response",
+                model="gpt-4",
+                input=user_input,
+                output=llm_response,
+                metadata={
+                    "language": session_metadata.get("language", "unknown") if session_metadata else "unknown",
+                },
+            ):
+                # Spans are handled by the context managers
+                pass
+
+        logger.info("✅ Logged to Langfuse successfully")
+        langfuse_client.flush()
+
+    except Exception as e:
+        logger.error(f"❌ Langfuse error: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ============ CUSTOM AGENT WITH LANGUAGE DETECTION ============
 
@@ -438,62 +511,66 @@ class MultilingualAgent(Agent):
         except Exception as e:
             vad_logger.error(f"❌ Error handling VAD event: {e}")
     
-    async def _detect_language(self, audio_frames: list):
-        """Detect language and update STT"""
-        try:
-            lang_detect_logger.info("=" * 80)
-            lang_detect_logger.info(f"🔍 STARTING LANGUAGE DETECTION")
-            lang_detect_logger.info(f"⏱️  Processing {len(audio_frames)} audio frames")
-            lang_detect_logger.info("=" * 80)
+
+async def _detect_language(self, audio_frames: list):
+    """Detect language and update STT"""
+    try:
+        lang_detect_logger.info("=" * 80)
+        lang_detect_logger.info(f"🔍 STARTING LANGUAGE DETECTION")
+        lang_detect_logger.info(f"⏱️  Processing {len(audio_frames)} audio frames")
+        lang_detect_logger.info("=" * 80)
+        
+        # Detect language using Whisper
+        detected_lang = await self.language_detector.detect_language_from_frames(audio_frames)
+        
+        if detected_lang:
+            # Get current language (strip region code if present)
+            current_lang = self.current_stt_language.split('-')[0]
             
-            # Detect language using Whisper
-            detected_lang = await self.language_detector.detect_language_from_frames(audio_frames)
-            
-            if detected_lang:
-                # Get current language (strip region code if present)
-                current_lang = self.current_stt_language.split('-')[0]
+            if detected_lang != current_lang:
+                lang_detect_logger.info("=" * 80)
+                lang_detect_logger.info(f"🔀 LANGUAGE SWITCH DETECTED!")
+                lang_detect_logger.info(f"   FROM: {self.current_stt_language}")
+                lang_detect_logger.info(f"   TO: {detected_lang}")
+                lang_detect_logger.info("=" * 80)
                 
-                if detected_lang != current_lang:
-                    lang_detect_logger.info("=" * 80)
-                    lang_detect_logger.info(f"🔀 LANGUAGE SWITCH DETECTED!")
-                    lang_detect_logger.info(f"   FROM: {self.current_stt_language}")
-                    lang_detect_logger.info(f"   TO: {detected_lang}")
-                    lang_detect_logger.info("=" * 80)
-                    
-                    # Update statistics
-                    language_stats["switches"] += 1
-                    language_stats["current_language"] = detected_lang
-                    
-                    # Map to Deepgram language codes
-                    deepgram_lang_map = {
-                        'en': 'en-US',
-                        'hi': 'hi',
-                        'gu': 'hi',  # Deepgram treats Gujarati as Hindi
-                        'kn': 'kn',
-                        'ta': 'ta',
-                        'te': 'te',
-                        'ml': 'ml',
-                        'bn': 'bn',
-                        'mr': 'mr',
-                    }
-                    
-                    new_deepgram_lang = deepgram_lang_map.get(detected_lang, 'en-US')
-                    lang_detect_logger.info(f"📍 Language mapping: {detected_lang} → {new_deepgram_lang} (Deepgram format)")
-                    
-                    # Update Deepgram STT
-                    self.current_stt_language = new_deepgram_lang
-                    
+                # Update statistics
+                language_stats["switches"] += 1
+                language_stats["current_language"] = detected_lang
+                
+                # Map to Deepgram language codes
+                deepgram_lang_map = {
+                    'en': 'en-US',
+                    'hi': 'hi',
+                    'gu': 'hi',  # Deepgram treats Gujarati as Hindi
+                    'kn': 'kn',
+                    'ta': 'ta',
+                    'te': 'te',
+                    'ml': 'ml',
+                    'bn': 'bn',
+                    'mr': 'mr',
+                }
+                
+                new_deepgram_lang = deepgram_lang_map.get(detected_lang, 'en-US')
+                lang_detect_logger.info(f"📍 Language mapping: {detected_lang} → {new_deepgram_lang} (Deepgram format)")
+                
+                # Update Deepgram STT
+                self.current_stt_language = new_deepgram_lang
+                
+                # ⚠️ CRITICAL: Actually update the STT instance
+                # You need to store the STT instance reference when creating the agent
+                if hasattr(self, '_stt_instance'):
+                    self._stt_instance.update_options(language=new_deepgram_lang)
                     stt_logger.info("=" * 80)
-                    stt_logger.info(f"✅ LANGUAGE SWITCHED")
+                    stt_logger.info(f"✅ DEEPGRAM STT UPDATED")
                     stt_logger.info(f"   New language: {new_deepgram_lang}")
                     stt_logger.info("=" * 80)
-                    
-        except Exception as e:
-            lang_detect_logger.error(f"❌ Error in language detection: {e}")
-            import traceback
-            traceback.print_exc()
-
-
+                
+    except Exception as e:
+        lang_detect_logger.error(f"❌ Error in language detection: {e}")
+        import traceback
+        traceback.print_exc()
+        
 # ============ SYSTEM PROMPTS ============
 
 _default_instructions = """You are a multilingual AI voice assistant for Autodesk. Follow these rules strictly:
@@ -527,18 +604,18 @@ async def entrypoint(ctx: JobContext):
     global _default_instructions, _greeting_message, outbound_trunk_id
     
     logger.info("=" * 80)
-    logger.info("🚀 AGENT ENTRYPOINT STARTED")
+    logger.info(" AGENT ENTRYPOINT STARTED")
     logger.info("=" * 80)
     
     # Set up Langfuse tracing
     setup_langfuse()
     
-    logger.info(f"📞 Connecting to room: {ctx.room.name}")
+    logger.info(f" Connecting to room: {ctx.room.name}")
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     user_identity = "phone_user"
     phone_number = ctx.job.metadata
-    logger.info(f"☎️  Dialing {phone_number} to room {ctx.room.name}")
+    logger.info(f"  Dialing {phone_number} to room {ctx.room.name}")
 
     await ctx.api.sip.create_sip_participant(
         api.CreateSIPParticipantRequest(
@@ -556,7 +633,7 @@ async def entrypoint(ctx: JobContext):
 
     # Monitor call status
     start_time = perf_counter()
-    logger.info("⏳ Monitoring call status...")
+    logger.info(" Monitoring call status...")
     
     while perf_counter() - start_time < 30:
         call_status = participant.attributes.get("sip.callStatus")
@@ -565,12 +642,12 @@ async def entrypoint(ctx: JobContext):
             logger.info("✅ User has picked up - call is active")
             return
         elif call_status == "automation":
-            logger.debug("🤖 Call status: automation")
+            logger.debug(" Call status: automation")
         elif participant.disconnect_reason == rtc.DisconnectReason.USER_REJECTED:
-            logger.info("❌ User rejected the call, exiting job")
+            logger.info(" User rejected the call, exiting job")
             break
         elif participant.disconnect_reason == rtc.DisconnectReason.USER_UNAVAILABLE:
-            logger.info("📵 User did not pick up, exiting job")
+            logger.info(" User did not pick up, exiting job")
             break
             
         await asyncio.sleep(0.1)
@@ -586,52 +663,61 @@ async def run_voice_agent(
     greeting_message: str
 ):
     logger.info("=" * 80)
-    logger.info("🎙️  INITIALIZING VOICE AGENT WITH DUAL-STT")
+    logger.info("  INITIALIZING VOICE AGENT WITH DUAL-STT")
     logger.info("=" * 80)
     
     # Validate API keys
     if not deepgram_api_key:
-        raise ValueError("❌ DEEPGRAM_API_KEY is not set in environment")
+        raise ValueError("DEEPGRAM_API_KEY is not set in environment")
     if not groq_api_key:
-        raise ValueError("❌ GROQ_API_KEY is not set in environment")
+        raise ValueError("GROQ_API_KEY is not set in environment")
     
-    logger.info("✅ API Keys validated")
+    logger.info("API Keys validated")
     
     # Initialize Language Detector (Whisper on Groq)
-    logger.info("🔧 Initializing Language Detector (Groq Whisper)...")
+    logger.info("Initializing Language Detector (Groq Whisper)...")
     language_detector = LanguageDetector(groq_api_key)
     
     # Initialize Deepgram STT - START WITH ENGLISH DEFAULT!
-    logger.info("🔧 Initializing Deepgram STT (Primary)...")
-    stt_instance = deepgram.STT(
-        model="nova-2",
-        language="en-US",  # START WITH ENGLISH DEFAULT!
-        api_key=deepgram_api_key,
+    logger.info(" Initializing Deepgram STT (Primary)...")
+    # stt_instance = deepgram.STT(
+    #     model="nova-2",
+    #     language="en-US",  # START WITH ENGLISH DEFAULT!
+    #     api_key=deepgram_api_key,
+    # )
+    
+    # stt_logger.info("✅ Deepgram STT initialized with language: en-US (default)")
+    
+    # servam ai for stt
+    stt_instance = sarvam.STT(
+        language="unknown",
+        model="saarika:v2.5"
     )
-    stt_logger.info("✅ Deepgram STT initialized with language: en-US (default)")
 
     # Initialize LLM (GPT-4 for better multilingual understanding)
-    logger.info("🔧 Initializing GPT-4 LLM...")
+    logger.info(" Initializing GPT-4 LLM...")
     llm_instance = openai.LLM(
         model="gpt-4",
         temperature=0.7,
     )
-    logger.info("✅ GPT-4 LLM initialized")
+    logger.info(" GPT-4 LLM initialized")
 
     # Initialize TTS (OpenAI TTS with multilingual support)
-    logger.info("🔧 Initializing OpenAI TTS...")
+    logger.info(" Initializing OpenAI TTS...")
     tts_instance = openai.TTS(
         voice="alloy",
         speed=1.0,
     )
-    logger.info("✅ OpenAI TTS initialized")
+    logger.info(" OpenAI TTS initialized")
 
     # Create multilingual agent
-    logger.info("🔧 Creating MultilingualAgent...")
+    logger.info(" Creating MultilingualAgent...")
     assistant = MultilingualAgent(
         language_detector=language_detector,
         instructions=instructions,
     )
+    
+    assistant._stt_instance = stt_instance
 
     # Create agent session
     session = AgentSession(
@@ -646,9 +732,9 @@ async def run_voice_agent(
     if langfuse_client and LANGFUSE_AVAILABLE:
         try:
             lf_trace_id = langfuse_client.create_trace_id()
-            logger.info(f"📊 Langfuse trace created: {lf_trace_id}")
+            logger.info(f" Langfuse trace created: {lf_trace_id}")
         except Exception as e:
-            logger.warning(f"⚠️  Failed to create Langfuse trace: {e}")
+            logger.warning(f"  Failed to create Langfuse trace: {e}")
 
     # ============ FIXED EVENT HANDLERS ============
 
@@ -656,15 +742,16 @@ async def run_voice_agent(
     def on_user_speech_committed(event):
         """Handle user speech with proper event structure - FIXED VERSION"""
         try:
+            logger.info("you are inside user_speech_committed")
             if hasattr(event, 'alternatives') and event.alternatives and len(event.alternatives) > 0:
                 transcript = event.alternatives[0].text
                 language = getattr(event.alternatives[0], 'language', 'unknown')
                 
                 stt_logger.info("=" * 80)
-                stt_logger.info(f"👤 USER SPEECH DETECTED (Deepgram)")
-                stt_logger.info(f"📝 Transcript: {transcript}")
-                stt_logger.info(f"🌍 Language: {language}")
-                stt_logger.info(f"🔧 Current STT Setting: {assistant.current_stt_language}")
+                stt_logger.info(f" USER SPEECH DETECTED (Deepgram)")
+                stt_logger.info(f" Transcript: {transcript}")
+                stt_logger.info(f" Language: {language}")
+                stt_logger.info(f" Current STT Setting: {assistant.current_stt_language}")
                 stt_logger.info("=" * 80)
                 
                 # Log to Langfuse
@@ -691,7 +778,7 @@ async def run_voice_agent(
                 stt_logger.info("=" * 80)
                 
         except Exception as e:
-            stt_logger.error(f"❌ Error in user_speech_committed: {e}")
+            stt_logger.error(f" Error in user_speech_committed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -703,6 +790,8 @@ async def run_voice_agent(
     @session.on("user_stopped_speaking")
     def on_user_stopped_speaking(ev: vad.VADEvent):
         """Handle user stopped speaking for language detection"""
+        print("we are inside the vad even handler function ")
+        print(f"vad is getting {vad.VADEvent}")
         asyncio.create_task(assistant.handle_vad_event(ev))
 
     @session.on("agent_speech_committed")
@@ -712,8 +801,8 @@ async def run_voice_agent(
             if hasattr(event, 'text'):
                 agent_text = event.text
                 logger.info("=" * 80)
-                logger.info(f"🤖 AGENT RESPONSE:")
-                logger.info(f"📝 {agent_text}")
+                logger.info(f" AGENT RESPONSE:")
+                logger.info(f" {agent_text}")
                 logger.info("=" * 80)
                 
                 # Log to Langfuse
@@ -734,12 +823,12 @@ async def run_voice_agent(
             elif hasattr(event, 'alternatives') and event.alternatives and len(event.alternatives) > 0:
                 agent_text = event.alternatives[0].text
                 logger.info("=" * 80)
-                logger.info(f"🤖 AGENT RESPONSE:")
-                logger.info(f"📝 {agent_text}")
+                logger.info(f" AGENT RESPONSE:")
+                logger.info(f" {agent_text}")
                 logger.info("=" * 80)
                 
         except Exception as e:
-            logger.error(f"❌ Error in agent_speech_committed: {e}")
+            logger.error(f"Error in agent_speech_committed: {e}")
             import traceback
             traceback.print_exc()
 
@@ -748,7 +837,7 @@ async def run_voice_agent(
     def on_any_event(event_name, *args):
         """Debug all events - helps identify what's firing"""
         if event_name not in ["audio_stream"]:  # Skip noisy audio events
-            logger.debug(f"🔔 EVENT FIRED: {event_name} - Args: {len(args)}")
+            logger.debug(f" EVENT FIRED: {event_name} - Args: {len(args)}")
 
     try:
         # Start the session
@@ -760,14 +849,14 @@ async def run_voice_agent(
         
         # Send greeting message
         logger.info("=" * 80)
-        logger.info(f"📢 SENDING GREETING MESSAGE")
-        logger.info(f"📝 Message: {greeting_message}")
+        logger.info(f" SENDING GREETING MESSAGE")
+        logger.info(f" Message: {greeting_message}")
         logger.info("=" * 80)
         await session.say(greeting_message, allow_interruptions=True)
-        logger.info("✅ Greeting sent successfully")
+        logger.info(" Greeting sent successfully")
         
     except Exception as e:
-        logger.error(f"❌ Error in voice agent: {e}")
+        logger.error(f" Error in voice agent: {e}")
         import traceback
         traceback.print_exc()
         raise
@@ -776,18 +865,121 @@ async def run_voice_agent(
         if langfuse_client and LANGFUSE_AVAILABLE:
             try:
                 langfuse_client.flush()
-                logger.info("✅ Langfuse events flushed")
+                logger.info(" Langfuse events flushed")
             except Exception as e:
                 logger.debug(f"Langfuse flush error: {e}")
+                
+    # log metrices of livekit -> which is given by livekit-agent itself
+    # @session.on("metrics_collected")
+    # def _on_metrics_collected(ev: MetricsCollectedEvent):
+    #     logger.info("inside metrics_collected event")
+    #     metrics.log_metrics(ev.metrics)
+    
+    usage_collector = metrics.UsageCollector()
+    @session.on("metrics_collected")
+    def _on_metrics_collected(ev: MetricsCollectedEvent):
+        logger.info("inside UsageCollector event -> It  tracks metrics such as LLM, TTS, and STT API usage")
+        metrics.log_metrics(ev.metrics)
+        usage_collector.collect(ev.metrics)
 
+    async def log_usage():
+        summary = usage_collector.get_summary()
+        logger.info(f"Usage: {summary}")
 
+    # At shutdown, generate and log the summary from the usage collector
+    ctx.add_shutdown_callback(log_usage)   
+    
+
+    @session.on("user_input_transcribed")
+    def on_user_input_transcribed(event: UserInputTranscribedEvent):
+        logger.info("we are inside transcribed event handler function")
+        print(f"User input transcribed: {event.transcript}, "
+          f"language: {event.language}, "
+          f"final: {event.is_final}, "
+          f"speaker id: {event.speaker_id}")
+    
+    
+    # @session.on("conversation_item_added")
+    # def on_conversation_item_added(event: ConversationItemAddedEvent):
+    #     print(f"Conversation item added from {event.item.role}: {event.item.text_content}. interrupted: {event.item.interrupted}")
+    #     # to iterate over all types of content:
+    #     for content in event.item.content:
+    #         if isinstance(content, str):
+    #             print(f" - text: {content}")    
+    #         elif isinstance(content, ImageContent):
+    #             # image is either a rtc.VideoFrame or URL to the image
+    #             print(f" - image: {content.image}")
+    #         elif isinstance(content, AudioContent):
+    #             # frame is a list[rtc.AudioFrame]
+    #             print(f" - audio: {content.frame}, transcript: {content.transcript}")
+    
+    
+    # Store conversation items for LLM logging
+    conversation_buffer = {
+        "last_user_input": None,
+        "last_agent_response": None,
+    }
+
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(event: ConversationItemAddedEvent):
+        """Enhanced conversation item handler with LLM input/output logging"""
+        try:
+            role = event.item.role
+            text_content = event.item.text_content
+            interrupted = event.item.interrupted
+            
+            print(f"Conversation item added from {role}: {text_content}. interrupted: {interrupted}")
+            
+            # Log detailed content
+            for content in event.item.content:
+                if isinstance(content, str):
+                    print(f" - text: {content}")
+                    
+                    # Track user input (LLM input)
+                    if role == "user":
+                        logger.info(f"🎤 LLM INPUT (User): {content}")
+                        conversation_buffer["last_user_input"] = content
+                    
+                    # Track agent response (LLM output)
+                    elif role == "assistant":
+                        logger.info(f"🤖 LLM OUTPUT (Agent): {content}")
+                        conversation_buffer["last_agent_response"] = content
+                        
+                        # If we have both user input and agent response, log the interaction
+                        if conversation_buffer["last_user_input"]:
+                            asyncio.create_task(
+                                log_llm_interaction(
+                                    user_input=conversation_buffer["last_user_input"],
+                                    llm_response=content,
+                                    session_metadata={
+                                        "room": ctx.room.name,
+                                        "language": assistant.current_stt_language,
+                                        "interrupted": interrupted,
+                                    }
+                                )
+                            )
+                            # Reset buffer
+                            conversation_buffer["last_user_input"] = None
+                            conversation_buffer["last_agent_response"] = None
+                
+                elif isinstance(content, ImageContent):
+                    print(f" - image: {content.image}")
+                elif isinstance(content, AudioContent):
+                    print(f" - audio: {content.frame}, transcript: {content.transcript}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Error in conversation_item_added handler: {e}")
+            import traceback
+            traceback.print_exc()
+
+        
 def prewarm(proc: JobProcess):
     """Prewarm VAD model"""
     logger.info("=" * 80)
-    logger.info("🔥 PREWARMING VAD MODEL")
+    logger.info(" PREWARMING VAD MODEL")
     logger.info("=" * 80)
     proc.userdata["vad"] = silero.VAD.load()
-    logger.info("✅ VAD model prewarmed successfully")
+    logger.info("VAD model prewarmed successfully")
 
 
 # ... (rest of the code remains the same for auto_dispatch_calls, run_agent_worker, run_api_server_thread, run_api_mode)
@@ -795,7 +987,7 @@ def prewarm(proc: JobProcess):
 async def auto_dispatch_calls():
     """Automatically dispatch calls from a queue or configuration"""
     logger.info("=" * 80)
-    logger.info("🤖 AUTO-DISPATCH MODE")
+    logger.info(" AUTO-DISPATCH MODE")
     logger.info("=" * 80)
     
     livekit_url = os.getenv("LIVEKIT_URL")
@@ -803,7 +995,7 @@ async def auto_dispatch_calls():
     livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
     
     if not all([livekit_url, livekit_api_key, livekit_api_secret]):
-        raise ValueError("❌ LiveKit credentials not set in environment")
+        raise ValueError(" LiveKit credentials not set in environment")
     
     lk_api = api.LiveKitAPI(
         url=livekit_url,
@@ -816,17 +1008,17 @@ async def auto_dispatch_calls():
     if os.path.exists(phone_numbers_file):
         with open(phone_numbers_file, "r") as f:
             phone_numbers = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-        logger.info(f"📋 Loaded {len(phone_numbers)} phone numbers from {phone_numbers_file}")
+        logger.info(f" Loaded {len(phone_numbers)} phone numbers from {phone_numbers_file}")
     else:
-        phone_numbers = ["+916203879448"]
-        logger.info(f"⚠️  No phone_numbers.txt found, using default: {phone_numbers[0]}")
+        phone_numbers = ["+918234052526"]
+        logger.info(f"  No phone_numbers.txt found, using default: {phone_numbers[0]}")
     
-    logger.info(f"📞 Starting auto-dispatch for {len(phone_numbers)} phone number(s)")
+    logger.info(f" Starting auto-dispatch for {len(phone_numbers)} phone number(s)")
     
     for idx, phone_number in enumerate(phone_numbers, 1):
         try:
             logger.info(f"\n{'='*80}")
-            logger.info(f"📞 Dispatching call {idx}/{len(phone_numbers)}: {phone_number}")
+            logger.info(f" Dispatching call {idx}/{len(phone_numbers)}: {phone_number}")
             logger.info(f"{'='*80}")
             
             room_name = f"call-{phone_number.replace('+', '')}-{int(perf_counter() * 1000)}"
@@ -849,7 +1041,7 @@ async def auto_dispatch_calls():
             await asyncio.sleep(2)
             
         except Exception as e:
-            logger.error(f"❌ Error dispatching call to {phone_number}: {e}")
+            logger.error(f" Error dispatching call to {phone_number}: {e}")
             import traceback
             traceback.print_exc()
     
@@ -866,7 +1058,7 @@ def run_agent_worker():
     from datetime import datetime
     
     logger.info("=" * 80)
-    logger.info("🚀 STARTING LIVEKIT AGENT WORKER")
+    logger.info(" STARTING LIVEKIT AGENT WORKER")
     logger.info("=" * 80)
     
     agent_worker_status["running"] = True
@@ -887,7 +1079,7 @@ def run_agent_worker():
         
         sys.argv = original_argv
     except Exception as e:
-        logger.error(f"❌ Agent worker error: {e}")
+        logger.error(f" Agent worker error: {e}")
         agent_worker_status["running"] = False
         raise
 
@@ -895,15 +1087,15 @@ def run_agent_worker():
 def run_api_server_thread(host: str = "0.0.0.0", port: int = 8000):
     """Run the FastAPI server in a background thread"""
     logger.info("=" * 80)
-    logger.info(f"🌐 STARTING API SERVER")
+    logger.info(f" STARTING API SERVER")
     logger.info(f"   Host: {host}")
     logger.info(f"   Port: {port}")
     logger.info("=" * 80)
-    logger.info(f"📚 API Documentation: http://{host}:{port}/docs")
-    logger.info(f"❤️  Health Check: http://{host}:{port}/health")
-    logger.info(f"📊 Status: http://{host}:{port}/status")
-    logger.info(f"🌍 Language Stats: http://{host}:{port}/language-stats")
-    logger.info(f"📞 Dispatch Call: POST http://{host}:{port}/dispatch/call")
+    logger.info(f" API Documentation: http://{host}:{port}/docs")
+    logger.info(f" Health Check: http://{host}:{port}/health")
+    logger.info(f" Status: http://{host}:{port}/status")
+    logger.info(f" Language Stats: http://{host}:{port}/language-stats")
+    logger.info(f" Dispatch Call: POST http://{host}:{port}/dispatch/call")
     logger.info("=" * 80)
     
     config = uvicorn.Config(
@@ -919,17 +1111,17 @@ def run_api_server_thread(host: str = "0.0.0.0", port: int = 8000):
 def run_api_mode():
     """Run both agent worker and API server together"""
     if not outbound_trunk_id or not outbound_trunk_id.startswith("ST_"):
-        raise ValueError("❌ SIP_OUTBOUND_TRUNK_ID is not set or invalid")
+        raise ValueError(" SIP_OUTBOUND_TRUNK_ID is not set or invalid")
     
     logger.info("\n" + "=" * 80)
-    logger.info("🚀 LIVEKIT OUTBOUND CALLER - DUAL-STT API MODE (FIXED)")
+    logger.info(" LIVEKIT OUTBOUND CALLER - DUAL-STT API MODE (FIXED)")
     logger.info("=" * 80)
     logger.info("Components:")
-    logger.info("  ✅ Deepgram STT (Primary - High Accuracy Transcription)")
-    logger.info("  ✅ Groq Whisper (Secondary - Language Detection)")
-    logger.info("  ✅ FastAPI Server (Background Thread)")
-    logger.info("  ✅ LiveKit Agent Worker (Main Thread)")
-    logger.info("  ✅ Enhanced Logging (VAD, STT, Language Detection)")
+    logger.info("   Deepgram STT (Primary - High Accuracy Transcription)")
+    logger.info("   Groq Whisper (Secondary - Language Detection)")
+    logger.info("   FastAPI Server (Background Thread)")
+    logger.info("   LiveKit Agent Worker (Main Thread)")
+    logger.info("   Enhanced Logging (VAD, STT, Language Detection)")
     logger.info("=" * 80)
     logger.info("Supported Languages:")
     logger.info("  🇬🇧 English")
@@ -940,21 +1132,21 @@ def run_api_mode():
     
     # Validate API keys
     if not deepgram_api_key:
-        logger.error("❌ DEEPGRAM_API_KEY not set!")
+        logger.error(" DEEPGRAM_API_KEY not set!")
         raise ValueError("DEEPGRAM_API_KEY is required")
     
     if not groq_api_key:
-        logger.error("❌ GROQ_API_KEY not set!")
+        logger.error(" GROQ_API_KEY not set!")
         raise ValueError("GROQ_API_KEY is required")
     
-    logger.info("✅ API keys validated")
+    logger.info(" API keys validated")
     
     # Get API configuration
     api_port = int(os.getenv("API_PORT", "8000"))
     api_host = os.getenv("API_HOST", "0.0.0.0")
     
     # Start API server in background thread
-    logger.info("🚀 Starting API server in background thread...")
+    logger.info(" Starting API server in background thread...")
     api_thread = threading.Thread(
         target=run_api_server_thread,
         args=(api_host, api_port),
@@ -965,17 +1157,17 @@ def run_api_mode():
     
     # Give API server time to start
     import time
-    logger.info("⏳ Waiting for API server to initialize...")
+    logger.info(" Waiting for API server to initialize...")
     time.sleep(2)
     
     if api_thread.is_alive():
-        logger.info("✅ API server thread is running!")
+        logger.info(" API server thread is running!")
     else:
-        logger.error("❌ API server thread failed to start!")
+        logger.error(" API server thread failed to start!")
         raise RuntimeError("API server failed to start")
     
     logger.info("\n" + "=" * 80)
-    logger.info("🚀 Starting LiveKit Agent Worker in main thread...")
+    logger.info(" Starting LiveKit Agent Worker in main thread...")
     logger.info("=" * 80 + "\n")
     
     # Start agent worker in main thread (needs signal handling)
@@ -984,13 +1176,13 @@ def run_api_mode():
 
 if __name__ == "__main__":
     if not outbound_trunk_id or not outbound_trunk_id.startswith("ST_"):
-        raise ValueError("❌ SIP_OUTBOUND_TRUNK_ID is not set or invalid")
+        raise ValueError(" SIP_OUTBOUND_TRUNK_ID is not set or invalid")
     
     import sys
     
     # Print banner
     print("\n" + "=" * 80)
-    print("🎙️  LIVEKIT MULTILINGUAL OUTBOUND CALLER - DUAL-STT (FIXED)")
+    print("  LIVEKIT MULTILINGUAL OUTBOUND CALLER - DUAL-STT (FIXED)")
     print("=" * 80)
     print("Version: 2.1.0")
     print("Features: Deepgram + Groq Whisper + Enhanced Logging")
@@ -1000,7 +1192,7 @@ if __name__ == "__main__":
         mode = sys.argv[1]
         
         if mode == "api":
-            logger.info("🔧 Mode: API (Production)")
+            logger.info(" Mode: API (Production)")
             run_api_mode()
         
         elif mode == "auto":
@@ -1008,7 +1200,7 @@ if __name__ == "__main__":
             asyncio.run(auto_dispatch_calls())
         
         elif mode == "dev":
-            logger.info("🔧 Mode: Development (Agent Worker Only)")
+            logger.info(" Mode: Development (Agent Worker Only)")
             cli.run_app(
                 WorkerOptions(
                     entrypoint_fnc=entrypoint,
@@ -1017,7 +1209,7 @@ if __name__ == "__main__":
                 )
             )
         else:
-            print("❌ Invalid mode specified!")
+            print(" Invalid mode specified!")
             print("\nUsage:")
             print("  python agent.py api   - Run API server with agent worker (production)")
             print("  python agent.py dev   - Run agent worker only (development)")
@@ -1028,5 +1220,5 @@ if __name__ == "__main__":
             sys.exit(1)
     else:
         # Default to API mode
-        logger.info("🔧 Mode: API (Default)")
+        logger.info(" Mode: API (Default)")
         run_api_mode()
