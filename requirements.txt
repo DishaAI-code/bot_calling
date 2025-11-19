@@ -80,3 +80,54 @@
 
 
 #  this is the current requirement.txt
+##############################
+# Core LiveKit Dependencies
+##############################
+livekit>=1.0.12
+livekit-agents[sarvam]>=1.2.17
+livekit-api>=1.0.5
+livekit-protocol>=1.0.4
+
+##############################
+# LiveKit Plugins
+##############################
+livekit-plugins-openai>=1.1.7      # OpenAI LLM & TTS
+livekit-plugins-silero>=1.1.7      # VAD (Voice Activity Detection)
+# Removed: livekit-plugins-deepgram
+livekit-plugins-azure>=1.2.15      # Optional: Azure STT & TTS
+
+##############################
+# Speech & Audio
+##############################
+azure-cognitiveservices-speech>=1.40.0  # Only if using Azure STT/TTS
+numpy>=1.24.0
+
+##############################
+# Language Detection (Groq)
+##############################
+groq>=0.4.0
+
+##############################
+# FastAPI / Server
+##############################
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+
+##############################
+# HTTP / Networking
+##############################
+httpx>=0.25.0
+
+##############################
+# Utilities
+##############################
+python-dotenv>=1.0.0
+
+##############################
+# Optional: Observability
+##############################
+langfuse>=2.0.0
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp-proto-http>=1.20.0
