@@ -19,9 +19,8 @@ from livekit.agents import (
     AgentSession,
 )
 
-from livekit.agents.llm import ChatContext, ChatMessage
 from livekit.agents.telemetry import set_tracer_provider
-from livekit.plugins import openai, silero, deepgram
+from livekit.plugins import openai, silero
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, cast
@@ -30,7 +29,7 @@ import uvicorn
 from livekit.agents import metrics, MetricsCollectedEvent
 # from livekit.agents import metrics, MetricsCollectedEvent
 from livekit.agents import ConversationItemAddedEvent
-from livekit.agents.llm import ImageContent, AudioContent,ChatContent,ChatMessage
+from livekit.agents.llm import ImageContent, AudioContent
 from livekit.agents import UserInputTranscribedEvent
 from langfuse import get_client,observe
 # For Whisper on Groq
@@ -72,8 +71,7 @@ deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
 groq_api_key = os.getenv("GROQ_API_KEY")
 sarvam_api_key=os.getenv("sarvam_api_key")
 # Validate critical API keys
-if not deepgram_api_key:
-    logger.error(" DEEPGRAM_API_KEY not set in environment!")
+
 if not groq_api_key:
     logger.error(" GROQ_API_KEY not set in environment!")
 
@@ -127,7 +125,6 @@ async def root():
         "service": "LiveKit Outbound Caller API - Fixed Dual STT",
         "version": "2.1.0",
         "status": "running",
-        "features": ["Deepgram Primary STT", "Groq Whisper Language Detection", "Proper Event Logging"],
         "endpoints": {
             "health": "/health",
             "status": "/status",
@@ -143,7 +140,6 @@ async def health_check():
     return {
         "status": "healthy",
         "agent_worker": "running" if agent_worker_status["running"] else "stopped",
-        "deepgram_configured": bool(deepgram_api_key),
         "groq_configured": bool(groq_api_key),
         "timestamp": perf_counter()
     }
@@ -156,7 +152,6 @@ async def get_status():
         "environment": {
             "livekit_url": os.getenv("LIVEKIT_URL", "not set"),
             "sip_trunk_configured": bool(outbound_trunk_id and outbound_trunk_id.startswith("ST_")),
-            "deepgram_configured": bool(deepgram_api_key),
             "groq_configured": bool(groq_api_key),
         }
     }
@@ -512,65 +507,7 @@ class MultilingualAgent(Agent):
             vad_logger.error(f"❌ Error handling VAD event: {e}")
     
 
-async def _detect_language(self, audio_frames: list):
-    """Detect language and update STT"""
-    try:
-        lang_detect_logger.info("=" * 80)
-        lang_detect_logger.info(f"🔍 STARTING LANGUAGE DETECTION")
-        lang_detect_logger.info(f"⏱️  Processing {len(audio_frames)} audio frames")
-        lang_detect_logger.info("=" * 80)
-        
-        # Detect language using Whisper
-        detected_lang = await self.language_detector.detect_language_from_frames(audio_frames)
-        
-        if detected_lang:
-            # Get current language (strip region code if present)
-            current_lang = self.current_stt_language.split('-')[0]
-            
-            if detected_lang != current_lang:
-                lang_detect_logger.info("=" * 80)
-                lang_detect_logger.info(f"🔀 LANGUAGE SWITCH DETECTED!")
-                lang_detect_logger.info(f"   FROM: {self.current_stt_language}")
-                lang_detect_logger.info(f"   TO: {detected_lang}")
-                lang_detect_logger.info("=" * 80)
-                
-                # Update statistics
-                language_stats["switches"] += 1
-                language_stats["current_language"] = detected_lang
-                
-                # Map to Deepgram language codes
-                deepgram_lang_map = {
-                    'en': 'en-US',
-                    'hi': 'hi',
-                    'gu': 'hi',  # Deepgram treats Gujarati as Hindi
-                    'kn': 'kn',
-                    'ta': 'ta',
-                    'te': 'te',
-                    'ml': 'ml',
-                    'bn': 'bn',
-                    'mr': 'mr',
-                }
-                
-                new_deepgram_lang = deepgram_lang_map.get(detected_lang, 'en-US')
-                lang_detect_logger.info(f"📍 Language mapping: {detected_lang} → {new_deepgram_lang} (Deepgram format)")
-                
-                # Update Deepgram STT
-                self.current_stt_language = new_deepgram_lang
-                
-                # ⚠️ CRITICAL: Actually update the STT instance
-                # You need to store the STT instance reference when creating the agent
-                if hasattr(self, '_stt_instance'):
-                    self._stt_instance.update_options(language=new_deepgram_lang)
-                    stt_logger.info("=" * 80)
-                    stt_logger.info(f"✅ DEEPGRAM STT UPDATED")
-                    stt_logger.info(f"   New language: {new_deepgram_lang}")
-                    stt_logger.info("=" * 80)
-                
-    except Exception as e:
-        lang_detect_logger.error(f"❌ Error in language detection: {e}")
-        import traceback
-        traceback.print_exc()
-        
+      
 # ============ SYSTEM PROMPTS ============
 
 _default_instructions = """You are a multilingual AI voice assistant for Autodesk. Follow these rules strictly:
@@ -667,8 +604,6 @@ async def run_voice_agent(
     logger.info("=" * 80)
     
     # Validate API keys
-    if not deepgram_api_key:
-        raise ValueError("DEEPGRAM_API_KEY is not set in environment")
     if not groq_api_key:
         raise ValueError("GROQ_API_KEY is not set in environment")
     
@@ -690,7 +625,7 @@ async def run_voice_agent(
     
     # servam ai for stt
     stt_instance = sarvam.STT(
-        language="unknown",
+        language="hi-IN",
         model="saarika:v2.5"
     )
 
@@ -748,7 +683,6 @@ async def run_voice_agent(
                 language = getattr(event.alternatives[0], 'language', 'unknown')
                 
                 stt_logger.info("=" * 80)
-                stt_logger.info(f" USER SPEECH DETECTED (Deepgram)")
                 stt_logger.info(f" Transcript: {transcript}")
                 stt_logger.info(f" Language: {language}")
                 stt_logger.info(f" Current STT Setting: {assistant.current_stt_language}")
@@ -759,7 +693,7 @@ async def run_voice_agent(
                     try:
                         langfuse_client.generation(
                             trace_id=lf_trace_id,
-                            name="user_speech_deepgram",
+                            name="user_speech",
                             input=transcript,
                             metadata={
                                 "stt_language": language,
@@ -1117,7 +1051,6 @@ def run_api_mode():
     logger.info(" LIVEKIT OUTBOUND CALLER - DUAL-STT API MODE (FIXED)")
     logger.info("=" * 80)
     logger.info("Components:")
-    logger.info("   Deepgram STT (Primary - High Accuracy Transcription)")
     logger.info("   Groq Whisper (Secondary - Language Detection)")
     logger.info("   FastAPI Server (Background Thread)")
     logger.info("   LiveKit Agent Worker (Main Thread)")
@@ -1130,10 +1063,6 @@ def run_api_mode():
     logger.info("  🇮🇳 Kannada (ಕನ್ನಡ)")
     logger.info("=" * 80 + "\n")
     
-    # Validate API keys
-    if not deepgram_api_key:
-        logger.error(" DEEPGRAM_API_KEY not set!")
-        raise ValueError("DEEPGRAM_API_KEY is required")
     
     if not groq_api_key:
         logger.error(" GROQ_API_KEY not set!")
@@ -1185,7 +1114,6 @@ if __name__ == "__main__":
     print("  LIVEKIT MULTILINGUAL OUTBOUND CALLER - DUAL-STT (FIXED)")
     print("=" * 80)
     print("Version: 2.1.0")
-    print("Features: Deepgram + Groq Whisper + Enhanced Logging")
     print("=" * 80 + "\n")
     
     if len(sys.argv) > 1:
