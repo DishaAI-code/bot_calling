@@ -1057,7 +1057,7 @@ def run_api_mode():
     api_thread = threading.Thread(
         target=run_api_server_thread,
         args=(api_host, api_port),
-        daemon=False,  # CHANGED: Not a daemon thread
+        daemon=True,  # CHANGED: Not a daemon thread
         name="APIServer"
     )
     api_thread.start()
