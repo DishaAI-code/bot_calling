@@ -73,3 +73,7 @@ pipecat_scrapper.py
 
 #  dont push outbound-trunk-json
 outbound-trunk.json
+
+# current code 
+current_app.py
+fast_api.py

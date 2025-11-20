@@ -89,5 +89,5 @@ echo "▶️  Starting application: python app.py api"
 echo "========================================="
 
 # Start the application
-exec python app.py api
+exec python app.py start
 
