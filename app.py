@@ -1047,47 +1047,25 @@ def run_api_mode():
     if not outbound_trunk_id or not outbound_trunk_id.startswith("ST_"):
         raise ValueError(" SIP_OUTBOUND_TRUNK_ID is not set or invalid")
     
-    logger.info("\n" + "=" * 80)
-    logger.info(" LIVEKIT OUTBOUND CALLER - DUAL-STT API MODE (FIXED)")
-    logger.info("=" * 80)
-    logger.info("Components:")
-    logger.info("   Groq Whisper (Secondary - Language Detection)")
-    logger.info("   FastAPI Server (Background Thread)")
-    logger.info("   LiveKit Agent Worker (Main Thread)")
-    logger.info("   Enhanced Logging (VAD, STT, Language Detection)")
-    logger.info("=" * 80)
-    logger.info("Supported Languages:")
-    logger.info("  🇬🇧 English")
-    logger.info("  🇮🇳 Hindi (हिंदी)")
-    logger.info("  🇮🇳 Gujarati (ગુજરાતી)")
-    logger.info("  🇮🇳 Kannada (ಕನ್ನಡ)")
-    logger.info("=" * 80 + "\n")
+    # IMPORTANT: Azure App Service port configuration
+    api_port = int(os.getenv("PORT", "8000"))  # Changed from API_PORT
+    api_host = "0.0.0.0"  # MUST be 0.0.0.0 for Azure
     
+    logger.info(f" API Server will bind to {api_host}:{api_port}")
     
-    if not groq_api_key:
-        logger.error(" GROQ_API_KEY not set!")
-        raise ValueError("GROQ_API_KEY is required")
-    
-    logger.info(" API keys validated")
-    
-    # Get API configuration
-    api_port = int(os.getenv("API_PORT", "8000"))
-    api_host = os.getenv("API_HOST", "0.0.0.0")
-    
-    # Start API server in background thread
-    logger.info(" Starting API server in background thread...")
+    # Start API server in background thread (but keep it alive)
     api_thread = threading.Thread(
         target=run_api_server_thread,
         args=(api_host, api_port),
-        daemon=True,
+        daemon=False,  # CHANGED: Not a daemon thread
         name="APIServer"
     )
     api_thread.start()
     
-    # Give API server time to start
+    # Wait longer for server to initialize
     import time
     logger.info(" Waiting for API server to initialize...")
-    time.sleep(2)
+    time.sleep(5)  # Increased from 2 seconds
     
     if api_thread.is_alive():
         logger.info(" API server thread is running!")
@@ -1095,58 +1073,7 @@ def run_api_mode():
         logger.error(" API server thread failed to start!")
         raise RuntimeError("API server failed to start")
     
-    logger.info("\n" + "=" * 80)
     logger.info(" Starting LiveKit Agent Worker in main thread...")
-    logger.info("=" * 80 + "\n")
     
-    # Start agent worker in main thread (needs signal handling)
+    # Start agent worker
     run_agent_worker()
-
-
-if __name__ == "__main__":
-    if not outbound_trunk_id or not outbound_trunk_id.startswith("ST_"):
-        raise ValueError(" SIP_OUTBOUND_TRUNK_ID is not set or invalid")
-    
-    import sys
-    
-    # Print banner
-    print("\n" + "=" * 80)
-    print("  LIVEKIT MULTILINGUAL OUTBOUND CALLER - DUAL-STT (FIXED)")
-    print("=" * 80)
-    print("Version: 2.1.0")
-    print("=" * 80 + "\n")
-    
-    if len(sys.argv) > 1:
-        mode = sys.argv[1]
-        
-        if mode == "api":
-            logger.info(" Mode: API (Production)")
-            run_api_mode()
-        
-        elif mode == "auto":
-            logger.info("🔧 Mode: Auto-Dispatch")
-            asyncio.run(auto_dispatch_calls())
-        
-        elif mode == "dev":
-            logger.info(" Mode: Development (Agent Worker Only)")
-            cli.run_app(
-                WorkerOptions(
-                    entrypoint_fnc=entrypoint,
-                    agent_name="outbound-caller",
-                    prewarm_fnc=prewarm,
-                )
-            )
-        else:
-            print(" Invalid mode specified!")
-            print("\nUsage:")
-            print("  python agent.py api   - Run API server with agent worker (production)")
-            print("  python agent.py dev   - Run agent worker only (development)")
-            print("  python agent.py auto  - Auto-dispatch calls from phone_numbers.txt")
-            print("\nExamples:")
-            print("  python agent.py api")
-            print("  python agent.py dev")
-            sys.exit(1)
-    else:
-        # Default to API mode
-        logger.info(" Mode: API (Default)")
-        run_api_mode()
