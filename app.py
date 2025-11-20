@@ -1077,3 +1077,65 @@ def run_api_mode():
     
     # Start agent worker
     run_agent_worker()
+    
+
+# ============ MAIN ENTRY POINT ============
+
+if __name__ == "__main__":
+    import sys
+    
+    print("\n" + "="*80)
+    print("  LIVEKIT MULTILINGUAL OUTBOUND CALLER - DUAL-STT (FIXED)")
+    print("="*80)
+    print("Version: 2.1.0")
+    print("="*80)
+    print()
+    
+    # Default to API mode if no arguments provided
+    if len(sys.argv) < 2:
+        print("🚀 No mode specified - Starting in DEFAULT API MODE (Production)")
+        print("   - FastAPI Server") 
+        print("   - LiveKit Agent Worker")
+        print("   - Multilingual STT")
+        print()
+        run_api_mode()
+    else:
+        mode = sys.argv[1].lower()
+        
+        try:
+            if mode == "api":
+                print("🚀 Starting in API MODE (Production)")
+                print("   - FastAPI Server")
+                print("   - LiveKit Agent Worker") 
+                print("   - Multilingual STT")
+                print()
+                run_api_mode()
+                
+            elif mode == "dev":
+                print("🔧 Starting in DEV MODE (Development)")
+                print("   - LiveKit Agent Worker Only")
+                print("   - No API Server")
+                print()
+                run_agent_worker()
+                
+            elif mode == "auto":
+                print("📞 Starting in AUTO-DISPATCH MODE")
+                print("   - Auto-dispatch calls from phone_numbers.txt")
+                print("   - No API Server")
+                print()
+                asyncio.run(auto_dispatch_calls())
+                
+            else:
+                print(f"❌ Unknown mode: {mode}")
+                print("Available modes: api, dev, auto")
+                print("Defaulting to API mode...")
+                print()
+                run_api_mode()
+                
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down...")
+        except Exception as e:
+            logger.error(f"❌ Fatal error: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
