@@ -12,7 +12,7 @@ jobs:
     steps:
       # 1️⃣ Checkout Code
       - name: Checkout code
-      uses: actions/checkout@v2
+        uses: actions/checkout@v2
 
       # 2️⃣ Build Docker Image
       - name: Build Docker Image
@@ -46,6 +46,6 @@ jobs:
       - name: Deploy to Azure Web App (Docker)
         uses: azure/webapps-deploy@v2
         with:
-          app-name: VoiceAssistent         # Your Azure Web App Name
-          slot-name: Production            # Optional
+          app-name: VoiceAssistent   # your Azure Web App name
+          slot-name: Production      # optional
           images: dishaai.azurecr.io/livekit-caller:${{ github.sha }}
