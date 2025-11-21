@@ -83,3 +83,9 @@ startup.txt
 
 agent.py
 call_dispatch.py
+
+
+.dockerignore
+.env.local
+21_11_reuirement.txt
+Dockerfile
