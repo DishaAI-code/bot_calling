@@ -1,0 +1,19 @@
+# Python Cache
+__pycache__/
+*.pyc
+
+# Env Files
+.env
+
+# Local folders
+.vscode/
+.idea/
+*.log
+
+# Optional datasets / logs
+data/
+logs/
+
+# Virtual environments
+venv/
+env/

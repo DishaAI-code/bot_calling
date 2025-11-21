@@ -312,6 +312,101 @@ def setup_langfuse(
         return False
 
 
+# ============ LANGUAGE DETECTION WITH WHISPER (GROQ) ============
+
+class LanguageDetector:
+    """Handles language detection using Whisper on Groq"""
+    
+    def __init__(self, groq_api_key: str):
+        self.client = Groq(api_key=groq_api_key)
+        self.current_language = "en"
+        self.detection_count = 0
+        lang_detect_logger.info("✅ LanguageDetector initialized with Groq Whisper")
+    
+    async def detect_language_from_frames(self, audio_frames: list) -> Optional[str]:
+        """
+        Detect language from audio frames using Whisper
+        Returns ISO 639-1 language code (e.g., 'en', 'hi', 'gu', 'kn')
+        """
+        try:
+            self.detection_count += 1
+            lang_detect_logger.info("=" * 80)
+            lang_detect_logger.info(f"🔍 LANGUAGE DETECTION #{self.detection_count} STARTED")
+            lang_detect_logger.info(f"📊 Processing {len(audio_frames)} audio frames")
+            
+            # Combine audio frames into a single buffer
+            combined = rtc.combine_audio_frames(audio_frames)
+            wav_data = combined.to_wav_bytes()
+            
+            lang_detect_logger.info(f"📦 Audio data size: {len(wav_data)} bytes ({len(wav_data)/1024:.2f} KB)")
+            
+            # Call Whisper API on Groq
+            start_time = perf_counter()
+            lang_detect_logger.info("🚀 Calling Groq Whisper API...")
+            
+            response = await asyncio.to_thread(
+                self.client.audio.transcriptions.create,
+                file=("audio.wav", wav_data, "audio/wav"),
+                model="whisper-large-v3",
+                response_format="verbose_json",
+                temperature=0.0,
+            )
+            
+            elapsed = perf_counter() - start_time
+            lang_detect_logger.info(f" Whisper API response time: {elapsed:.3f}s")
+            
+            # Extract language from response
+            detected_language = getattr(response, 'language', None)
+            transcript = getattr(response, 'text', '')
+            
+            if detected_language:
+                # Map language names to ISO codes if needed
+                lang_code = self._normalize_language_code(detected_language)
+                
+                lang_detect_logger.info("=" * 80)
+                lang_detect_logger.info(f" WHISPER LANGUAGE DETECTED: {detected_language} ({lang_code})")
+                lang_detect_logger.info(f" Whisper Transcript: {transcript}")
+                lang_detect_logger.info(f"Total detection time: {elapsed:.3f}s")
+                lang_detect_logger.info("=" * 80)
+                
+                # Update global stats
+                language_stats["detections"].append({
+                    "timestamp": perf_counter(),
+                    "language": lang_code,
+                    "language_full": detected_language,
+                    "transcript": transcript,
+                    "duration": elapsed,
+                })
+                
+                return lang_code
+            else:
+                lang_detect_logger.warning(f"⚠️  No language detected in Whisper response")
+                return None
+                
+        except Exception as e:
+            lang_detect_logger.error(f"❌ Error detecting language: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _normalize_language_code(self, lang: str) -> str:
+        """Normalize language code to ISO 639-1"""
+        lang_map = {
+            'english': 'en',
+            'hindi': 'hi',
+            'gujarati': 'gu',
+            'kannada': 'kn',
+            'tamil': 'ta',
+            'telugu': 'te',
+            'malayalam': 'ml',
+            'bengali': 'bn',
+            'marathi': 'mr',
+            'punjabi': 'pa',
+        }
+        
+        lang_lower = lang.lower()
+        return lang_map.get(lang_lower, lang_lower[:2])
+    
 
 # ============ LLM INPUT/OUTPUT LOGGER WITH LANGFUSE ============
 
@@ -372,7 +467,7 @@ async def log_llm_interaction(user_input: str, llm_response: str, session_metada
         langfuse_client.flush()
 
     except Exception as e:
-        logger.error(f" Langfuse error: {e}")
+        logger.error(f"❌ Langfuse error: {e}")
         import traceback
         traceback.print_exc()
 
@@ -388,28 +483,28 @@ class MultilingualAgent(Agent):
         self.language_detector = language_detector
         self.current_stt_language = "en-US"  # Start with English
         self._vad_frames_buffer = []
-        vad_logger.info(" MultilingualAgent initialized")
+        vad_logger.info("✅ MultilingualAgent initialized")
     
     async def handle_vad_event(self, ev: vad.VADEvent):
         """Handle VAD events for language detection"""
         try:
             vad_logger.info("=" * 80)
-            vad_logger.info(f" VAD EVENT: User stopped speaking")
-            vad_logger.info(f"  Duration: {ev.duration:.2f}s")
-            vad_logger.info(f"  Frames count: {len(ev.frames)}")
-            vad_logger.info(f" Speech probability: {ev.probability:.2%}")
+            vad_logger.info(f"🎤 VAD EVENT: User stopped speaking")
+            vad_logger.info(f"⏱️  Duration: {ev.duration:.2f}s")
+            vad_logger.info(f"📊 Frames count: {len(ev.frames)}")
+            vad_logger.info(f"🔊 Speech probability: {ev.probability:.2%}")
             vad_logger.info("=" * 80)
             
             # Skip very short utterances
             if ev.duration < 0.8:
-                vad_logger.info(f"  Utterance too short ({ev.duration:.2f}s), skipping language detection")
+                vad_logger.info(f"⚠️  Utterance too short ({ev.duration:.2f}s), skipping language detection")
                 return
             
             # Start language detection
             asyncio.create_task(self._detect_language(ev.frames))
             
         except Exception as e:
-            vad_logger.error(f" Error handling VAD event: {e}")
+            vad_logger.error(f"❌ Error handling VAD event: {e}")
     
 
       
@@ -469,7 +564,7 @@ async def entrypoint(ctx: JobContext):
     )
 
     participant = await ctx.wait_for_participant(identity=user_identity)
-    logger.info(f" Participant joined: {user_identity}")
+    logger.info(f"✅ Participant joined: {user_identity}")
     
     await run_voice_agent(ctx, participant, _default_instructions, _greeting_message)
 
@@ -481,7 +576,7 @@ async def entrypoint(ctx: JobContext):
         call_status = participant.attributes.get("sip.callStatus")
         
         if call_status == "active":
-            logger.info(" User has picked up - call is active")
+            logger.info("✅ User has picked up - call is active")
             return
         elif call_status == "automation":
             logger.debug(" Call status: automation")
@@ -494,7 +589,7 @@ async def entrypoint(ctx: JobContext):
             
         await asyncio.sleep(0.1)
 
-    logger.info("  Session timed out, exiting job")
+    logger.info("⏱️  Session timed out, exiting job")
     ctx.shutdown()
 
 
@@ -952,25 +1047,47 @@ def run_api_mode():
     if not outbound_trunk_id or not outbound_trunk_id.startswith("ST_"):
         raise ValueError(" SIP_OUTBOUND_TRUNK_ID is not set or invalid")
     
-    # IMPORTANT: Azure App Service port configuration
-    api_port = int(os.getenv("PORT", "8000"))  # Changed from API_PORT
-    api_host = "0.0.0.0"  # MUST be 0.0.0.0 for Azure
+    logger.info("\n" + "=" * 80)
+    logger.info(" LIVEKIT OUTBOUND CALLER - DUAL-STT API MODE (FIXED)")
+    logger.info("=" * 80)
+    logger.info("Components:")
+    logger.info("   Groq Whisper (Secondary - Language Detection)")
+    logger.info("   FastAPI Server (Background Thread)")
+    logger.info("   LiveKit Agent Worker (Main Thread)")
+    logger.info("   Enhanced Logging (VAD, STT, Language Detection)")
+    logger.info("=" * 80)
+    logger.info("Supported Languages:")
+    logger.info("  🇬🇧 English")
+    logger.info("  🇮🇳 Hindi (हिंदी)")
+    logger.info("  🇮🇳 Gujarati (ગુજરાતી)")
+    logger.info("  🇮🇳 Kannada (ಕನ್ನಡ)")
+    logger.info("=" * 80 + "\n")
     
-    logger.info(f" API Server will bind to {api_host}:{api_port}")
     
-    # Start API server in background thread (but keep it alive)
+    if not groq_api_key:
+        logger.error(" GROQ_API_KEY not set!")
+        raise ValueError("GROQ_API_KEY is required")
+    
+    logger.info(" API keys validated")
+    
+    # Get API configuration
+    api_port = int(os.getenv("API_PORT", "8000"))
+    api_host = os.getenv("API_HOST", "0.0.0.0")
+    
+    # Start API server in background thread
+    logger.info(" Starting API server in background thread...")
     api_thread = threading.Thread(
         target=run_api_server_thread,
         args=(api_host, api_port),
-        daemon=True,  # CHANGED: Not a daemon thread
+        daemon=True,
         name="APIServer"
     )
     api_thread.start()
     
-    # Wait longer for server to initialize
+    # Give API server time to start
     import time
     logger.info(" Waiting for API server to initialize...")
-    time.sleep(5)  # Increased from 2 seconds
+    time.sleep(2)
     
     if api_thread.is_alive():
         logger.info(" API server thread is running!")
@@ -978,69 +1095,58 @@ def run_api_mode():
         logger.error(" API server thread failed to start!")
         raise RuntimeError("API server failed to start")
     
+    logger.info("\n" + "=" * 80)
     logger.info(" Starting LiveKit Agent Worker in main thread...")
+    logger.info("=" * 80 + "\n")
     
-    # Start agent worker
+    # Start agent worker in main thread (needs signal handling)
     run_agent_worker()
-    
 
-# ============ MAIN ENTRY POINT ============
 
 if __name__ == "__main__":
+    if not outbound_trunk_id or not outbound_trunk_id.startswith("ST_"):
+        raise ValueError(" SIP_OUTBOUND_TRUNK_ID is not set or invalid")
+    
     import sys
     
-    print("\n" + "="*80)
+    # Print banner
+    print("\n" + "=" * 80)
     print("  LIVEKIT MULTILINGUAL OUTBOUND CALLER - DUAL-STT (FIXED)")
-    print("="*80)
+    print("=" * 80)
     print("Version: 2.1.0")
-    print("="*80)
-    print()
+    print("=" * 80 + "\n")
     
-    # Default to API mode if no arguments provided
-    if len(sys.argv) < 2:
-        print("🚀 No mode specified - Starting in DEFAULT API MODE (Production)")
-        print("   - FastAPI Server") 
-        print("   - LiveKit Agent Worker")
-        print("   - Multilingual STT")
-        print()
-        run_api_mode()
-    else:
-        mode = sys.argv[1].lower()
+    if len(sys.argv) > 1:
+        mode = sys.argv[1]
         
-        try:
-            if mode == "api":
-                print("🚀 Starting in API MODE (Production)")
-                print("   - FastAPI Server")
-                print("   - LiveKit Agent Worker") 
-                print("   - Multilingual STT")
-                print()
-                run_api_mode()
-                
-            elif mode == "dev":
-                print("🔧 Starting in DEV MODE (Development)")
-                print("   - LiveKit Agent Worker Only")
-                print("   - No API Server")
-                print()
-                run_agent_worker()
-                
-            elif mode == "auto":
-                print("📞 Starting in AUTO-DISPATCH MODE")
-                print("   - Auto-dispatch calls from phone_numbers.txt")
-                print("   - No API Server")
-                print()
-                asyncio.run(auto_dispatch_calls())
-                
-            else:
-                print(f"❌ Unknown mode: {mode}")
-                print("Available modes: api, dev, auto")
-                print("Defaulting to API mode...")
-                print()
-                run_api_mode()
-                
-        except KeyboardInterrupt:
-            print("\n🛑 Shutting down...")
-        except Exception as e:
-            logger.error(f"❌ Fatal error: {e}")
-            import traceback
-            traceback.print_exc()
+        if mode == "api":
+            logger.info(" Mode: API (Production)")
+            run_api_mode()
+        
+        elif mode == "auto":
+            logger.info("🔧 Mode: Auto-Dispatch")
+            asyncio.run(auto_dispatch_calls())
+        
+        elif mode == "dev":
+            logger.info(" Mode: Development (Agent Worker Only)")
+            cli.run_app(
+                WorkerOptions(
+                    entrypoint_fnc=entrypoint,
+                    agent_name="outbound-caller",
+                    prewarm_fnc=prewarm,
+                )
+            )
+        else:
+            print(" Invalid mode specified!")
+            print("\nUsage:")
+            print("  python agent.py api   - Run API server with agent worker (production)")
+            print("  python agent.py dev   - Run agent worker only (development)")
+            print("  python agent.py auto  - Auto-dispatch calls from phone_numbers.txt")
+            print("\nExamples:")
+            print("  python agent.py api")
+            print("  python agent.py dev")
             sys.exit(1)
+    else:
+        # Default to API mode
+        logger.info(" Mode: API (Default)")
+        run_api_mode()
