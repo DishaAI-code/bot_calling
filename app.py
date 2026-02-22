@@ -19,7 +19,7 @@ from livekit.agents import (
     AgentSession,
     RoomInputOptions,   # ← ADDED
 )
-from livekit.plugins import elevenlabs
+
 from livekit.agents.telemetry import set_tracer_provider
 from livekit.plugins import openai, silero
 from fastapi import FastAPI, HTTPException

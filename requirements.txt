@@ -1,9 +1,6 @@
-
-
-# Core LiveKit Dependencies
-
 livekit>=1.0.12
 livekit-agents[sarvam]>=1.2.17
+livekit-agents[elevenlabs]>=1.2.0
 livekit-api>=1.0.5
 livekit-protocol>=1.0.4
 
@@ -34,3 +31,15 @@ langfuse>=2.0.0
 opentelemetry-api>=1.20.0
 opentelemetry-sdk>=1.20.0
 opentelemetry-exporter-otlp-proto-http>=1.20.0
+# ✅ ✅ ✅ RAG DEPENDENCIES (THIS FIXES YOUR CRASH)
+pypdf>=3.16.4
+sentence-transformers>=2.2.2
+transformers>=4.36.0
+torch>=2.1.0
+scipy>=1.10.0
+langchain>=0.1.0
+langchain-community>=0.0.20
+pinecone
+openai
+requests
+mem0ai
