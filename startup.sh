@@ -18,4 +18,4 @@ fi
 
 # Start the application in DEFAULT API MODE
 echo "  Starting application in DEFAULT API MODE"
-python app.py api
+python app.py start
